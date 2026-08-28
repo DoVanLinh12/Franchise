@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 
+from app.config import settings
+
 app = FastAPI(
-    title="Real Estate Management API",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version="0.1.0",
 )
 
 
 @app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-    }
+async def health() -> dict[str, str]:
+    return {"status": "ok"}

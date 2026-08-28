@@ -1,60 +1,86 @@
-services:
+name: franchise
 
+services:
   postgres:
-    image: postgres:16
-    container_name: real-estate-postgres
+    image: postgres:16-alpine
+    container_name: franchise-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: real_estate
+      POSTGRES_USER: ${POSTGRES_USER:-franchise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-franchise}
+      POSTGRES_DB: ${POSTGRES_DB:-franchise}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-franchise} -d ${POSTGRES_DB:-franchise}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: real-estate-redis
+    container_name: franchise-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
+    image: franchise-api
     build:
-      context: ./backend
-    container_name: real-estate-api
-    command: >
-      uvicorn app.main:app
-      --host 0.0.0.0
-      --port 8000
-      --reload
-    volumes:
-      - ./backend:/app
+      context: ./src/backend
+    container_name: franchise-api
+    environment:
+      APP_NAME: Franchise Management API
+      ENVIRONMENT: development
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/real_estate
-      REDIS_URL: redis://redis:6379/0
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   worker:
-    build:
-      context: ./backend
-    container_name: real-estate-worker
-    command: celery -A app.workers.celery worker --loglevel=info
-    volumes:
-      - ./backend:/app
+    image: franchise-api
+    container_name: franchise-worker
+    profiles: ["full"]
+    command: celery -A app.celery_app:celery_app worker --loglevel=info --concurrency=1
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/real_estate
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
       REDIS_URL: redis://redis:6379/0
     depends_on:
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./src/frontend
+    container_name: franchise-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
 
   mailhog:
-    image: mailhog/mailhog
-    container_name: real-estate-mailhog
+    image: mailhog/mailhog:v1.0.1
+    container_name: franchise-mailhog
+    profiles: ["full"]
     ports:
       - "1025:1025"
       - "8025:8025"

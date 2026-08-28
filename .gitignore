@@ -1,26 +1,27 @@
 # Python
 __pycache__/
-__init__.py
 *.py[cod]
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+reports/
 
 # Virtual environment
 .venv/
+.ci-venv/
 venv/
 
 # Environment
 .env
-backend/.env
-frontend/.env
+!.env.example
+!**/.env.example
 
 # Node
 node_modules/
-frontend/node_modules/
-frontend/dist/
+dist/
 
 # IDE
 .idea/

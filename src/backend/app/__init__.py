@@ -1,0 +1,1 @@
+"""Franchise management backend application."""
