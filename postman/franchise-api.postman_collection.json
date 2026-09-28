@@ -1,0 +1,461 @@
+{
+  "info": {
+    "_postman_id": "9d71fe69-7236-45d6-bcf0-f306a91ae403",
+    "name": "Franchise Management API",
+    "description": "Automated smoke and authentication flow for local Docker/Jenkins.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health",
+          "request": {"method": "GET", "url": "{{baseUrl}}/health"},
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('health 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json().status).to.eql('ok');"
+          ]}}]
+        },
+        {
+          "name": "Readiness",
+          "request": {"method": "GET", "url": "{{baseUrl}}/health/ready"},
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('ready 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json().database).to.eql('ok');"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login seeded admin",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"admin@franchise.local\",\"password\":\"Admin@123\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('login 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.expect(body.access_token).to.be.a('string');",
+            "pm.collectionVariables.set('accessToken', body.access_token);",
+            "pm.collectionVariables.set('refreshToken', body.refresh_token);"
+          ]}}]
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/auth/me"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('me 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json().roles).to.include('ADMIN');"
+          ]}}]
+        },
+        {
+          "name": "Refresh rotation",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"refresh_token\":\"{{refreshToken}}\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/refresh"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('refresh 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('accessToken', body.access_token);",
+            "pm.collectionVariables.set('refreshToken', body.refresh_token);"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Protected business queries",
+      "item": [
+        {
+          "name": "List stores",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/stores?page=1&page_size=20"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('stores 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json().total).to.be.at.least(1);"
+          ]}}]
+        },
+        {
+          "name": "Financial report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/reports/financial-summary?period_from=2020-01-01&period_to=2030-12-31"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('report 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json()).to.be.an('array');"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Complete franchise workflow",
+      "item": [
+        {
+          "name": "Register isolated workflow owner",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"owner.{{runId}}@franchise.local\",\"password\":\"Admin@123\",\"full_name\":\"Nguyễn Minh Khôi\",\"phone\":\"0916882233\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('workflow owner registered', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('ownerId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Assign Store Owner role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"role\":\"STORE_OWNER\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/users/{{ownerId}}/roles"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('store owner role assigned', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Login workflow owner",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"owner.{{runId}}@franchise.local\",\"password\":\"Admin@123\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('owner login 200', () => pm.response.to.have.status(200));",
+            "pm.collectionVariables.set('ownerToken', pm.response.json().access_token);"
+          ]}}]
+        },
+        {
+          "name": "Login seeded accountant",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"email\":\"accountant@franchise.local\",\"password\":\"Admin@123\"}"},
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('accountant login 200', () => pm.response.to.have.status(200));",
+            "pm.collectionVariables.set('accountantToken', pm.response.json().access_token);"
+          ]}}]
+        },
+        {
+          "name": "Submit application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{ownerToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"applicant_name\":\"Nguyễn Minh Khôi\",\"email\":\"owner.{{runId}}@franchise.local\",\"phone\":\"0916882233\",\"proposed_store_name\":\"Mộc Miên Coffee Hà Đông\",\"proposed_address\":\"22 Tố Hữu, phường Hà Cầu, quận Hà Đông, Hà Nội\",\"proposed_area\":135,\"investment_budget\":2100000000,\"note\":\"Mặt bằng gần khu đô thị, có chỗ đỗ xe và khu vực giao hàng riêng.\"}"},
+            "url": "{{baseUrl}}/api/v1/applications"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('application created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('applicationId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Start application review",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/applications/{{applicationId}}/start-review"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('review started', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Approve application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"note\":\"Approved by Newman\"}"},
+            "url": "{{baseUrl}}/api/v1/applications/{{applicationId}}/approve"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('application approved', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Create store",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"application_id\":\"{{applicationId}}\",\"owner_id\":\"{{ownerId}}\",\"code\":\"HN-HD-{{runId}}\",\"name\":\"Mộc Miên Coffee Hà Đông\",\"address\":\"22 Tố Hữu, phường Hà Cầu, quận Hà Đông, Hà Nội\",\"phone\":\"02433552233\",\"email\":\"hadong.{{runId}}@mocmien.local\"}"},
+            "url": "{{baseUrl}}/api/v1/stores"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('store created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('storeId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Create contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"store_id\":\"{{storeId}}\",\"contract_no\":\"API-CONTRACT-{{runId}}\",\"signed_date\":\"{{today}}\",\"effective_from\":\"{{monthStart}}\",\"effective_to\":\"{{nextYear}}\",\"royalty_rate\":5,\"initial_franchise_fee\":100000000,\"deposit_amount\":20000000,\"system_fee\":1000000,\"service_fee\":2000000}"},
+            "url": "{{baseUrl}}/api/v1/contracts"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('contract created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('contractId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Record initial franchise fee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"transaction_type\":\"INITIAL_FEE_PAYMENT\",\"amount\":20000000,\"transaction_date\":\"{{today}}\",\"reference_no\":\"BANK-{{runId}}\",\"note\":\"20 percent initial payment\"}"},
+            "url": "{{baseUrl}}/api/v1/contracts/{{contractId}}/financial-transactions"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('contract payment recorded', () => pm.response.to.have.status(201));"
+          ]}}]
+        },
+        {
+          "name": "Activate contract",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/contracts/{{contractId}}/activate"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('contract activated', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Create promotion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accessToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"name\":\"API Promotion {{runId}}\",\"description\":\"Newman integration flow\",\"discount_type\":\"FIXED_AMOUNT\",\"discount_value\":100000,\"start_date\":\"{{today}}\",\"end_date\":\"{{nextWeek}}\",\"scope\":\"ALL_STORES\",\"funding_type\":\"SHARED\",\"brand_share\":60,\"store_share\":40,\"store_ids\":[]}"},
+            "url": "{{baseUrl}}/api/v1/promotions"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('promotion created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('promotionId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Activate promotion",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/promotions/{{promotionId}}/activate"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('promotion activated', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Create daily revenue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{ownerToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"store_id\":\"{{storeId}}\",\"business_date\":\"{{today}}\",\"gross_revenue\":10000000,\"note\":\"Newman daily revenue\",\"promotion_details\":[{\"promotion_id\":\"{{promotionId}}\",\"discount_amount\":100000}]}"},
+            "url": "{{baseUrl}}/api/v1/revenues"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('revenue created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('revenueId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Submit daily revenue",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{ownerToken}}"}],
+            "url": "{{baseUrl}}/api/v1/revenues/{{revenueId}}/submit"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('revenue submitted', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Approve daily revenue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accountantToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"note\":\"Checked by Newman\"}"},
+            "url": "{{baseUrl}}/api/v1/revenues/{{revenueId}}/approve"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('revenue approved', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Generate monthly invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accountantToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"store_id\":\"{{storeId}}\",\"invoice_no\":\"API-INV-{{runId}}\",\"period_month\":\"{{monthStart}}\",\"vat_rate\":10}"},
+            "url": "{{baseUrl}}/api/v1/invoices/generate"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('invoice generated', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('invoiceId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Issue invoice",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{accountantToken}}"}],
+            "url": "{{baseUrl}}/api/v1/invoices/{{invoiceId}}/issue"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('invoice issued', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "Export invoice PDF",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{ownerToken}}"}],
+            "url": "{{baseUrl}}/api/v1/invoices/{{invoiceId}}/pdf"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('invoice PDF 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');"
+          ]}}]
+        },
+        {
+          "name": "Record partial payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accountantToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"payment_no\":\"API-PAY-{{runId}}\",\"amount\":1000000,\"payment_date\":\"{{today}}\",\"method\":\"BANK_TRANSFER\",\"reference_no\":\"REF-{{runId}}\"}"},
+            "url": "{{baseUrl}}/api/v1/invoices/{{invoiceId}}/payments"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('payment recorded', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('paymentId', pm.response.json().id);"
+          ]}}]
+        },
+        {
+          "name": "Reverse payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{accountantToken}}"}
+            ],
+            "body": {"mode": "raw", "raw": "{\"reason\":\"Newman reversal check\"}"},
+            "url": "{{baseUrl}}/api/v1/payments/{{paymentId}}/reverse"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('payment reversed', () => pm.response.to.have.status(204));"
+          ]}}]
+        },
+        {
+          "name": "List owner notifications",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{ownerToken}}"}],
+            "url": "{{baseUrl}}/api/v1/notifications?page=1&page_size=20"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('notifications available', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.json().total).to.be.at.least(1);"
+          ]}}]
+        },
+        {
+          "name": "Export financial CSV",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+            "url": "{{baseUrl}}/api/v1/reports/financial-summary/export?period_from={{monthStart}}&period_to={{today}}&format=csv"
+          },
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('CSV export 200', () => pm.response.to.have.status(200));",
+            "pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv');"
+          ]}}]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8000"},
+    {"key": "accessToken", "value": ""},
+    {"key": "refreshToken", "value": ""},
+    {"key": "ownerToken", "value": ""},
+    {"key": "accountantToken", "value": ""},
+    {"key": "ownerId", "value": ""},
+    {"key": "runId", "value": ""},
+    {"key": "today", "value": ""},
+    {"key": "monthStart", "value": ""},
+    {"key": "nextWeek", "value": ""},
+    {"key": "nextYear", "value": ""}
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {"exec": [
+        "if (!pm.collectionVariables.get('runId')) {",
+        "  const now = new Date();",
+        "  const iso = d => d.toISOString().slice(0, 10);",
+        "  const nextWeek = new Date(now); nextWeek.setUTCDate(nextWeek.getUTCDate() + 7);",
+        "  const nextYear = new Date(now); nextYear.setUTCFullYear(nextYear.getUTCFullYear() + 1);",
+        "  pm.collectionVariables.set('runId', String(Date.now()));",
+        "  pm.collectionVariables.set('today', iso(now));",
+        "  pm.collectionVariables.set('monthStart', `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`);",
+        "  pm.collectionVariables.set('nextWeek', iso(nextWeek));",
+        "  pm.collectionVariables.set('nextYear', iso(nextYear));",
+        "}"
+      ]}
+    }
+  ]
+}
