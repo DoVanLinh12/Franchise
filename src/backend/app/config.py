@@ -6,11 +6,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     APP_NAME: str = "Franchise Management API"
     ENVIRONMENT: str = "development"
-    DEBUG: bool = False
+    APP_DEBUG: bool = False
     DATABASE_URL: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/franchise"
+        "postgresql://postgres:postgres@localhost:5432/franchise"
     )
     REDIS_URL: str = "redis://localhost:6379/0"
+    JWT_SECRET_KEY: str = (
+        "local-development-only-change-this-secret-before-sharing"
+    )
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ISSUER: str = "franchise-api"
+    JWT_AUDIENCE: str = "franchise-api-users"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    PASSWORD_RESET_EXPIRE_MINUTES: int = 30
+    MAX_LOGIN_ATTEMPTS: int = 5
+    LOGIN_LOCK_MINUTES: int = 15
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    RATE_LIMIT_REQUESTS: int = 120
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    EMAIL_FROM: str = "noreply@franchise.local"
 
     model_config = SettingsConfigDict(
         env_file=".env",

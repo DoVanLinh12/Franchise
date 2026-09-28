@@ -1,23 +1,30 @@
 from collections.abc import AsyncIterator
 
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.orm import DeclarativeBase
+import asyncpg
 
 from app.config import settings
 
-
-class Base(DeclarativeBase):
-    pass
+_pool: asyncpg.Pool | None = None
 
 
-engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
-SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+async def connect_database() -> None:
+    global _pool
+    _pool = await asyncpg.create_pool(dsn=settings.DATABASE_URL)
 
 
-async def get_db() -> AsyncIterator[AsyncSession]:
-    async with SessionLocal() as session:
-        yield session
+async def disconnect_database() -> None:
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
+
+
+def get_pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("Database pool is not initialized")
+    return _pool
+
+
+async def get_connection() -> AsyncIterator[asyncpg.Connection]:
+    async with get_pool().acquire() as connection:
+        yield connection
