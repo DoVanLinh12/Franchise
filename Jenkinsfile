@@ -31,8 +31,9 @@ pipeline {
                           --disable-pip-version-check \
                           -r requirements-dev.txt
                         .ci-venv/bin/ruff check .
+                        .ci-venv/bin/mypy app
                         mkdir -p reports
-                        .ci-venv/bin/pytest \
+                        .ci-venv/bin/python -m pytest \
                           --junitxml=reports/junit.xml \
                           --cov=app \
                           --cov-report=term-missing \
@@ -60,37 +61,55 @@ pipeline {
                 }
             }
             steps {
-                dir('src/frontend') {
-                    sh '''
-                        npm ci
-                        npm run lint
-                        npm run build
-                    '''
-                }
-            }
-            post {
-                success {
-                    archiveArtifacts artifacts: 'src/frontend/dist/**',
-                        fingerprint: true
-                }
+                sh 'node --check src/frontend/app.js'
             }
         }
 
         stage('Compose Validation') {
             steps {
-                sh 'docker compose --profile full config --quiet'
+                sh 'docker compose --profile full --profile test --profile tools config --quiet'
             }
         }
 
-        stage('Build Images') {
+        stage('Build Application Images') {
             steps {
                 sh 'docker compose build api frontend'
+            }
+        }
+
+        stage('Database Migrations') {
+            steps {
+                sh '''
+                    docker compose up -d postgres
+                    docker compose --profile tools run --rm migrate
+                    docker compose --profile test run --rm database-test
+                    docker compose --profile tools run --rm seed
+                '''
+            }
+        }
+
+        stage('Postman API Tests') {
+            steps {
+                sh '''
+                    mkdir -p reports/postman
+                    docker compose --profile test run --rm postman
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                        testResults: 'reports/postman/postman-junit.xml'
+                    archiveArtifacts allowEmptyArchive: true,
+                        artifacts: 'reports/postman/postman-junit.xml'
+                    sh 'docker compose --profile test down --remove-orphans || true'
+                }
             }
         }
     }
 
     post {
         always {
+            sh 'docker compose --profile full --profile test --profile tools down --volumes --remove-orphans || true'
             deleteDir()
         }
     }

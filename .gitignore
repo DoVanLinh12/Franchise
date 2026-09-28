@@ -19,10 +19,6 @@ venv/
 !.env.example
 !**/.env.example
 
-# Node
-node_modules/
-dist/
-
 # IDE
 .idea/
 .vscode/
@@ -40,3 +36,5 @@ uploads/
 
 # Database
 *.db
+
+docs/*.xlsx

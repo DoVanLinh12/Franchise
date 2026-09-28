@@ -33,13 +33,16 @@ services:
     image: franchise-api
     build:
       context: ./src/backend
+      target: runtime
     container_name: franchise-api
     environment:
       APP_NAME: Franchise Management API
       ENVIRONMENT: development
-      DEBUG: "false"
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+      APP_DEBUG: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
       REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-this-secret-before-sharing}
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     ports:
       - "8000:8000"
     depends_on:
@@ -47,27 +50,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  worker:
-    image: franchise-api
-    container_name: franchise-worker
-    profiles: ["full"]
-    command: celery -A app.celery_app:celery_app worker --loglevel=info --concurrency=1
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   frontend:
+    image: franchise-frontend
     build:
       context: ./src/frontend
     container_name: franchise-frontend
@@ -77,6 +69,100 @@ services:
       api:
         condition: service_healthy
 
+  backend-test:
+    image: franchise-api-test
+    profiles: ["test"]
+    build:
+      context: ./src/backend
+      target: test
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-this-secret-before-sharing}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  migrate:
+    image: postgres:16-alpine
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+    volumes:
+      - ./database/migrations:/migrations:ro
+      - ./database/run-migrations.sh:/database/run-migrations.sh:ro
+    entrypoint: ["/bin/sh", "/database/run-migrations.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  database-test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+    volumes:
+      - ./database/tests:/tests:ro
+      - ./database/run-tests.sh:/database/run-tests.sh:ro
+    entrypoint: ["/bin/sh", "/database/run-tests.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    image: postgres:16-alpine
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+    volumes:
+      - ./database/seed.sql:/database/seed.sql:ro
+      - ./database/run-seed.sh:/database/run-seed.sh:ro
+    entrypoint: ["/bin/sh", "/database/run-seed.sh"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    image: franchise-api
+    container_name: franchise-worker
+    profiles: ["full"]
+    command: celery -A app.celery_app:celery_app worker --loglevel=info --concurrency=1
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-this-secret-before-sharing}
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
+  beat:
+    image: franchise-api
+    container_name: franchise-beat
+    profiles: ["full"]
+    command: celery -A app.celery_app:celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+    depends_on:
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
   mailhog:
     image: mailhog/mailhog:v1.0.1
     container_name: franchise-mailhog
@@ -84,6 +170,25 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  postman:
+    image: postman/newman:alpine
+    profiles: ["test"]
+    volumes:
+      - ./postman/franchise-api.postman_collection.json:/etc/newman/franchise-api.postman_collection.json:ro
+      - ./reports/postman:/etc/newman/results
+    command:
+      - run
+      - franchise-api.postman_collection.json
+      - --env-var
+      - baseUrl=http://api:8000
+      - --reporters
+      - cli,junit
+      - --reporter-junit-export
+      - results/postman-junit.xml
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
