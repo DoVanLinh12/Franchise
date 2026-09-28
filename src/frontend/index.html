@@ -1,13 +1,154 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Hệ thống quản lý chuỗi cửa hàng nhượng quyền">
+    <title>Franchise Management</title>
+    <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">FRANCHISE OPERATIONS</p>
+        <h1>Hệ thống quản lý nhượng quyền</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="api-status" class="status status-offline">Đang kết nối</span>
+        <button id="logout-button" class="button button-secondary hidden" type="button">Đăng xuất</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="login-view" class="login-layout">
+        <div class="panel login-panel">
+          <p class="eyebrow">ĐĂNG NHẬP HỆ THỐNG</p>
+          <h2>Chào mừng quay lại</h2>
+          <p class="muted">Đăng nhập theo vai trò để thực hiện công việc được phân quyền.</p>
+          <form id="login-form" class="form-stack">
+            <input id="api-url" type="hidden" value="http://localhost:8000">
+            <label>Email<input id="email" type="email" value="admin@franchise.local" autocomplete="username" required></label>
+            <label>Mật khẩu<input id="password" type="password" value="Admin@123" autocomplete="current-password" required></label>
+            <button class="button button-primary" type="submit">Đăng nhập</button>
+            <button id="register-button" class="button button-secondary" type="button">Đăng ký tài khoản mới</button>
+          </form>
+          <div class="demo-users" aria-label="Tài khoản demo">
+            <button class="demo-user" type="button" data-email="admin@franchise.local">Admin</button>
+            <button class="demo-user" type="button" data-email="owner@franchise.local">Chủ cửa hàng</button>
+            <button class="demo-user" type="button" data-email="accountant@franchise.local">Kế toán</button>
+          </div>
+          <p id="login-message" class="message" aria-live="polite"></p>
+        </div>
+        <aside class="panel info-panel">
+          <h2>Quy trình chính</h2>
+          <ol class="workflow-list">
+            <li>Đăng ký và duyệt hồ sơ nhượng quyền</li>
+            <li>Tạo cửa hàng, hợp đồng và kích hoạt</li>
+            <li>Ghi nhận, duyệt doanh thu hằng ngày</li>
+            <li>Lập hóa đơn, thanh toán và báo cáo</li>
+          </ol>
+          <p class="muted">Tài khoản demo dùng mật khẩu <code>Admin@123</code>.</p>
+        </aside>
+      </section>
+
+      <section id="app-view" class="app-layout hidden">
+        <aside class="sidebar panel">
+          <div id="current-user" class="current-user"></div>
+          <nav aria-label="Chức năng chính">
+            <button class="nav-item active" type="button" data-view="dashboard">Tổng quan</button>
+            <button class="nav-item" type="button" data-view="applications">Hồ sơ đăng ký</button>
+            <button class="nav-item" type="button" data-view="stores">Cửa hàng</button>
+            <button class="nav-item" type="button" data-view="contracts">Hợp đồng</button>
+            <button class="nav-item" type="button" data-view="promotions">Khuyến mãi</button>
+            <button class="nav-item" type="button" data-view="revenues">Doanh thu</button>
+            <button class="nav-item" type="button" data-view="invoices">Hóa đơn</button>
+            <button class="nav-item" type="button" data-view="payments">Thanh toán</button>
+            <button class="nav-item" type="button" data-view="notifications">Thông báo</button>
+            <button class="nav-item" type="button" data-view="report">Báo cáo</button>
+            <button class="nav-item role-admin hidden" type="button" data-view="audit_logs">Nhật ký hệ thống</button>
+          </nav>
+        </aside>
+
+        <div class="content">
+          <section id="dashboard-section" class="view-section">
+            <div class="section-heading">
+              <div><p class="eyebrow">TỔNG QUAN</p><h2>Tình hình vận hành</h2></div>
+              <button id="refresh-dashboard" class="button button-secondary" type="button">Tải lại</button>
+            </div>
+            <div id="summary-cards" class="summary-grid"></div>
+            <div class="dashboard-columns">
+              <div class="panel compact-panel">
+                <h3>Việc cần xử lý</h3>
+                <div id="work-queue" class="work-queue"></div>
+              </div>
+              <div class="panel compact-panel">
+                <h3>Thông báo mới</h3>
+                <div id="recent-notifications" class="work-queue"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="resource-section" class="view-section hidden">
+            <div class="section-heading">
+              <div><p class="eyebrow" id="resource-eyebrow">QUẢN LÝ</p><h2 id="resource-title">Danh sách</h2></div>
+              <div class="heading-actions">
+                <button id="import-revenue" class="button button-secondary hidden" type="button">Nhập doanh thu</button>
+                <input id="revenue-file" class="hidden" type="file" accept=".csv,.xlsx">
+                <button id="primary-action" class="button button-primary hidden" type="button">Tạo mới</button>
+                <button id="refresh-resource" class="button button-secondary" type="button">Tải lại</button>
+              </div>
+            </div>
+            <form id="filter-form" class="filter-bar">
+              <input id="search-filter" type="search" placeholder="Tìm kiếm theo tên hoặc mã">
+              <select id="status-filter" aria-label="Lọc trạng thái"><option value="">Tất cả trạng thái</option></select>
+              <button class="button button-secondary" type="submit">Lọc</button>
+            </form>
+            <div class="table-wrap panel">
+              <table>
+                <thead id="resource-head"></thead>
+                <tbody id="resource-body"></tbody>
+              </table>
+              <p id="resource-empty" class="empty hidden">Không có dữ liệu phù hợp.</p>
+            </div>
+            <div class="pagination">
+              <button id="previous-page" class="button button-secondary" type="button">Trang trước</button>
+              <span id="page-info">Trang 1</span>
+              <button id="next-page" class="button button-secondary" type="button">Trang sau</button>
+            </div>
+          </section>
+
+          <section id="report-section" class="view-section hidden">
+            <div class="section-heading"><div><p class="eyebrow">BÁO CÁO</p><h2>Tổng hợp tài chính</h2></div></div>
+            <form id="report-form" class="filter-bar panel report-filter">
+              <label>Từ ngày<input id="period-from" type="date" required></label>
+              <label>Đến ngày<input id="period-to" type="date" required></label>
+              <button class="button button-primary" type="submit">Xem báo cáo</button>
+              <button class="button button-secondary export-button" type="button" data-format="csv">Tải CSV</button>
+              <button class="button button-secondary export-button" type="button" data-format="xlsx">Tải Excel</button>
+            </form>
+            <div id="report-output" class="table-wrap panel"><p class="empty">Chọn khoảng thời gian để xem báo cáo.</p></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="operation-dialog" class="operation-dialog">
+      <form id="operation-form" method="dialog">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">THAO TÁC</p><h2 id="dialog-title">Tạo mới</h2></div>
+          <button id="close-dialog" class="icon-button" type="button" aria-label="Đóng">×</button>
+        </div>
+        <p id="dialog-description" class="muted"></p>
+        <div id="dialog-fields" class="dialog-fields"></div>
+        <p id="dialog-message" class="message" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button id="cancel-dialog" class="button button-secondary" type="button">Hủy</button>
+          <button id="submit-operation" class="button button-primary" type="submit">Xác nhận</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <script src="app.js" defer></script>
   </body>
 </html>
