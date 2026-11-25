@@ -18,10 +18,7 @@ class Settings(BaseSettings):
     JWT_ISSUER: str = "franchise-api"
     JWT_AUDIENCE: str = "franchise-api-users"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     PASSWORD_RESET_EXPIRE_MINUTES: int = 30
-    MAX_LOGIN_ATTEMPTS: int = 5
-    LOGIN_LOCK_MINUTES: int = 15
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     RATE_LIMIT_REQUESTS: int = 120
     RATE_LIMIT_WINDOW_SECONDS: int = 60

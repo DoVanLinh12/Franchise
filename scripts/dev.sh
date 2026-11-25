@@ -18,10 +18,10 @@ Commands:
   api-logs           Follow API logs
   frontend-logs      Follow frontend logs
   config             Validate application Compose configuration
-  db-migrate         Apply pending SQL migrations
+  db-setup           Create the schema and install feature procedures/functions
+  db-migrate         Alias for db-setup
   db-test            Run Stored Procedure integration tests
   db-seed            Seed realistic local business data (2,500+ revenues)
-  db-reset           Delete local business data and load a fresh realistic dataset
   test               Run backend tests in the backend test container
   coverage           Run backend tests with coverage
   postman-test        Run the Postman collection and save its JUnit report
@@ -59,27 +59,16 @@ case "$command_name" in
   config)
     docker compose --profile full --profile test --profile tools config --quiet
     ;;
-  db-migrate)
-    docker compose --profile tools run --rm migrate
+  db-setup|db-migrate)
+    docker compose run --rm database-setup
     ;;
   db-test)
-    docker compose --profile tools run --rm migrate
+    docker compose run --rm database-setup
     docker compose --profile test run --rm database-test
     ;;
   db-seed)
-    docker compose --profile tools run --rm migrate
+    docker compose run --rm database-setup
     docker compose --profile tools run --rm seed
-    ;;
-  db-reset)
-    docker compose up -d postgres redis
-    docker compose --profile tools run --rm migrate
-    docker compose exec -T postgres \
-      psql -v ON_ERROR_STOP=1 \
-      -U "${POSTGRES_USER:-franchise}" \
-      -d "${POSTGRES_DB:-franchise}" \
-      < database/reset-local-data.sql
-    docker compose --profile tools run --rm seed
-    docker compose exec -T redis redis-cli FLUSHDB
     ;;
   test)
     docker compose --profile test run --rm backend-test

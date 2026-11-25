@@ -77,13 +77,13 @@ pipeline {
             }
         }
 
-        stage('Database Migrations') {
+        stage('Database Setup') {
             steps {
                 sh '''
                     docker compose up -d postgres
-                    docker compose --profile tools run --rm migrate
+                    docker compose run --rm database-setup
                     docker compose --profile test run --rm database-test
-                    docker compose --profile tools run --rm seed
+                    docker compose run --rm seed
                 '''
             }
         }

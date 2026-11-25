@@ -2,7 +2,8 @@
 
 ## Functional requirements
 
-1. Identity: đăng ký, đăng nhập JWT, refresh rotation, logout, reset mật khẩu.
+1. Identity: đăng ký, đăng nhập bằng email/mật khẩu, đặt lại mật khẩu và cấp
+   quyền theo vai trò. API dùng access JWT; hết hạn thì đăng nhập lại.
 2. RBAC: Admin, Store Owner, Accountant; kiểm tra ownership theo Store.
 3. Onboarding: Application → review → approve → Store → Contract.
 4. Activation: thu tối thiểu 20% Initial Fee trước khi Contract/Store ACTIVE.

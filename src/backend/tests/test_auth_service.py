@@ -61,23 +61,11 @@ class AuthRepositorySpy:
         self.calls.append(("get_roles", user_id))
         return ["STORE_OWNER"]
 
-    async def record_login_failure(self, connection, *args):
-        self.calls.append(("login_failure", args))
-
     async def record_login_success(self, connection, user_id):
         self.calls.append(("login_success", user_id))
 
     async def update_password_hash(self, connection, *args):
         self.calls.append(("update_hash", args))
-
-    async def store_refresh_token(self, connection, **kwargs):
-        self.calls.append(("store_refresh", kwargs))
-
-    async def rotate_refresh_token(self, connection, **kwargs):
-        self.calls.append(("rotate_refresh", kwargs))
-
-    async def revoke_refresh_token(self, connection, *args):
-        self.calls.append(("revoke_refresh", args))
 
     async def create_password_reset_token(self, connection, **kwargs):
         self.calls.append(("create_reset", kwargs))
@@ -103,7 +91,6 @@ def make_service(repository):
     config = Settings(
         JWT_SECRET_KEY="unit-test-secret-that-is-long-enough-for-auth",
         ACCESS_TOKEN_EXPIRE_MINUTES=15,
-        REFRESH_TOKEN_EXPIRE_DAYS=7,
     )
     return AuthService(
         repository=repository,
@@ -136,7 +123,7 @@ async def test_register_hashes_password_and_calls_repository(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_authenticate_stores_refresh_token(monkeypatch):
+async def test_authenticate_issues_access_token_only(monkeypatch):
     user_id = uuid4()
     repository = AuthRepositorySpy(
         {
@@ -144,7 +131,6 @@ async def test_authenticate_stores_refresh_token(monkeypatch):
             "password_hash": "hashed:password123",
             "status": "ACTIVE",
             "deleted_at": None,
-            "locked_until": None,
         }
     )
     service = make_service(repository)
@@ -153,8 +139,6 @@ async def test_authenticate_stores_refresh_token(monkeypatch):
     pair = await service.authenticate(
         "owner@example.com",
         "password123",
-        client_ip="127.0.0.1",
-        user_agent="pytest",
     )
 
     assert pair.token_type == "bearer"
@@ -162,19 +146,17 @@ async def test_authenticate_stores_refresh_token(monkeypatch):
         "get_auth",
         "get_roles",
         "login_success",
-        "store_refresh",
     ]
 
 
 @pytest.mark.asyncio
-async def test_authenticate_records_wrong_password(monkeypatch):
+async def test_authenticate_rejects_wrong_password_without_lockout(monkeypatch):
     repository = AuthRepositorySpy(
         {
             "id": uuid4(),
             "password_hash": "hashed:right-password",
             "status": "ACTIVE",
             "deleted_at": None,
-            "locked_until": None,
         }
     )
     service = make_service(repository)
@@ -183,11 +165,11 @@ async def test_authenticate_records_wrong_password(monkeypatch):
     with pytest.raises(AuthenticationError, match="incorrect"):
         await service.authenticate("owner@example.com", "wrong-password")
 
-    assert repository.calls[-1][0] == "login_failure"
+    assert [call[0] for call in repository.calls] == ["get_auth"]
 
 
 @pytest.mark.asyncio
-async def test_refresh_logout_and_password_reset(monkeypatch):
+async def test_password_reset(monkeypatch):
     user_id = uuid4()
     repository = AuthRepositorySpy(
         {
@@ -195,21 +177,14 @@ async def test_refresh_logout_and_password_reset(monkeypatch):
             "password_hash": "hashed:password123",
             "status": "ACTIVE",
             "deleted_at": None,
-            "locked_until": None,
         }
     )
     service = make_service(repository)
     monkeypatch.setattr(auth_service, "get_pool", lambda: FakePool())
-    original = service._jwt.issue_pair(user_id, ["STORE_OWNER"])
-
-    replacement = await service.refresh(original.refresh_token)
-    await service.logout(replacement.refresh_token)
     reset_token = await service.request_password_reset("owner@example.com")
     await service.reset_password(reset_token or "", "new-password123")
 
     names = [call[0] for call in repository.calls]
-    assert "rotate_refresh" in names
-    assert "revoke_refresh" in names
     assert "create_reset" in names
     assert "reset_password" in names
 
@@ -223,7 +198,7 @@ async def test_user_management_and_get_user(monkeypatch):
     actor_id = uuid4()
 
     result = await service.get_user(user_id)
-    await service.change_user_status(user_id, actor_id, "locked", "Review")
+    await service.change_user_status(user_id, actor_id, "inactive", "Review")
     await service.assign_role(user_id, "accountant", actor_id)
     await service.remove_role(user_id, "accountant", actor_id)
 
@@ -252,7 +227,7 @@ async def test_registration_validation(command):
 
 
 @pytest.mark.asyncio
-async def test_management_validation(monkeypatch):
+async def test_management_validation():
     service = make_service(AuthRepositorySpy())
     with pytest.raises(ValidationError, match="status"):
         await service.change_user_status(uuid4(), uuid4(), "unknown", "why")
@@ -264,12 +239,9 @@ async def test_management_validation(monkeypatch):
             "password_hash": "hashed:password123",
             "status": "ACTIVE",
             "deleted_at": None,
-            "locked_until": None,
         }
     )
-    service = make_service(repository)
-    monkeypatch.setattr(auth_service, "get_pool", lambda: FakePool())
-    with pytest.raises(ValidationError, match="IP"):
-        await service.authenticate(
-            "owner@example.com", "password123", client_ip="not-an-ip"
+    with pytest.raises(ValidationError, match="status"):
+        await make_service(repository).change_user_status(
+            uuid4(), uuid4(), "locked", "Not supported in local scope"
         )

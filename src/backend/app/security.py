@@ -10,7 +10,7 @@ from pwdlib import PasswordHash
 from pwdlib.exceptions import PwdlibError
 
 from app.config import Settings, settings
-from app.domain import TokenClaims, TokenPair
+from app.domain import AccessToken, TokenClaims
 from app.exceptions import TokenError
 
 
@@ -48,15 +48,11 @@ class JwtService:
     def __init__(self, config: Settings | None = None) -> None:
         self._config = config or settings
 
-    def issue_pair(self, user_id: UUID, roles: list[str]) -> TokenPair:
+    def issue_access_token(self, user_id: UUID, roles: list[str]) -> AccessToken:
         now = datetime.now(UTC)
         access_id = uuid4()
-        refresh_id = uuid4()
         access_expires_at = now + timedelta(
             minutes=self._config.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
-        refresh_expires_at = now + timedelta(
-            days=self._config.REFRESH_TOKEN_EXPIRE_DAYS
         )
 
         common: dict[str, Any] = {
@@ -75,25 +71,14 @@ class JwtService:
                 "exp": access_expires_at,
             }
         )
-        refresh_token = self._encode(
-            {
-                **common,
-                "jti": str(refresh_id),
-                "type": "refresh",
-                "exp": refresh_expires_at,
-            }
-        )
-        return TokenPair(
+        return AccessToken(
             access_token=access_token,
-            refresh_token=refresh_token,
             token_type="bearer",
             access_expires_at=access_expires_at,
-            refresh_expires_at=refresh_expires_at,
             access_token_id=access_id,
-            refresh_token_id=refresh_id,
         )
 
-    def decode(self, token: str, expected_type: str) -> TokenClaims:
+    def decode_access_token(self, token: str) -> TokenClaims:
         try:
             payload = jwt.decode(
                 token,
@@ -114,13 +99,11 @@ class JwtService:
                     ]
                 },
             )
-            token_type = str(payload["type"])
-            if token_type != expected_type:
+            if payload["type"] != "access":
                 raise TokenError("Unexpected token type")
             return TokenClaims(
                 user_id=UUID(str(payload["sub"])),
                 token_id=UUID(str(payload["jti"])),
-                token_type=token_type,
                 expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
             )
         except TokenError:

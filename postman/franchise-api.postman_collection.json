@@ -42,8 +42,7 @@
             "pm.test('login 200', () => pm.response.to.have.status(200));",
             "const body = pm.response.json();",
             "pm.expect(body.access_token).to.be.a('string');",
-            "pm.collectionVariables.set('accessToken', body.access_token);",
-            "pm.collectionVariables.set('refreshToken', body.refresh_token);"
+            "pm.collectionVariables.set('accessToken', body.access_token);"
           ]}}]
         },
         {
@@ -56,21 +55,6 @@
           "event": [{"listen": "test", "script": {"exec": [
             "pm.test('me 200', () => pm.response.to.have.status(200));",
             "pm.expect(pm.response.json().roles).to.include('ADMIN');"
-          ]}}]
-        },
-        {
-          "name": "Refresh rotation",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "body": {"mode": "raw", "raw": "{\"refresh_token\":\"{{refreshToken}}\"}"},
-            "url": "{{baseUrl}}/api/v1/auth/refresh"
-          },
-          "event": [{"listen": "test", "script": {"exec": [
-            "pm.test('refresh 200', () => pm.response.to.have.status(200));",
-            "const body = pm.response.json();",
-            "pm.collectionVariables.set('accessToken', body.access_token);",
-            "pm.collectionVariables.set('refreshToken', body.refresh_token);"
           ]}}]
         }
       ]
@@ -430,7 +414,6 @@
   "variable": [
     {"key": "baseUrl", "value": "http://localhost:8000"},
     {"key": "accessToken", "value": ""},
-    {"key": "refreshToken", "value": ""},
     {"key": "ownerToken", "value": ""},
     {"key": "accountantToken", "value": ""},
     {"key": "ownerId", "value": ""},

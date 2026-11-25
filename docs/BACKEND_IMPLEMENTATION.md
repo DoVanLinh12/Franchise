@@ -15,12 +15,13 @@ Backend triển khai các business rule đã chốt trong
 - Monthly Invoice, VAT, Credit, Payment, Outstanding và Notification.
 - CSV/XLSX import-export, Contract/Invoice PDF và báo cáo.
 - Audit Log bất biến cho các thao tác quan trọng.
-- SQL migration runner.
+- SQL database setup runner with feature-grouped procedures/functions.
 - Repository và Service layer gọi Stored Procedure/Function bằng `asyncpg`.
 
 ## 2. Database
 
-Migration `001_identity_application_store_contract.sql` tạo:
+`database/schema/001_create_all_tables.sql` tạo toàn bộ bảng, index và
+constraints, bao gồm:
 
 - `app.users`;
 - `app.roles`;
@@ -30,7 +31,7 @@ Migration `001_identity_application_store_contract.sql` tạo:
 - `app.contracts`;
 - `app.audit_logs`.
 
-Ba role được seed:
+Các role được nạp từ `database/reference-data/001_roles.sql`:
 
 ```text
 ADMIN
@@ -47,14 +48,14 @@ Các ràng buộc chính:
 - Một Store chỉ có tối đa một Contract `ACTIVE`.
 - Fee không âm; royalty rate nằm trong khoảng 0–100.
 - Audit Log không được update hoặc delete.
-- Refresh token và password reset token chỉ được lưu dưới dạng SHA-256 hash.
-- Refresh token chỉ dùng một lần; token cũ bị revoke khi rotation.
-- Reset mật khẩu thu hồi toàn bộ refresh token đang hoạt động.
+- Password reset token chỉ được lưu dưới dạng SHA-256 hash và chỉ dùng một lần.
+- API cấp access JWT khi đăng nhập; không có refresh token, nên đăng nhập lại
+  khi access token hết hạn.
 - Không cho vô hiệu hóa hoặc gỡ role của Admin hoạt động cuối cùng.
 
 ## 3. Stored Procedure và Function
 
-Migration `002_application_store_contract_routines.sql` tạo:
+Các routine được nhóm theo chức năng trong `database/procedures/`:
 
 ```text
 proc_submit_franchise_application
@@ -74,18 +75,15 @@ fn_get_store
 fn_get_contract
 ```
 
-Migration `003` và `004` bổ sung:
+Nhóm `010_authentication.sql` khai báo routines:
 
 ```text
-refresh_tokens
 password_reset_tokens
 fn_get_user_auth_by_email
 fn_get_user
 fn_get_user_roles
 proc_register_user
-proc_record_login_failure / proc_record_login_success
-proc_store_refresh_token / proc_rotate_refresh_token
-proc_revoke_refresh_token
+proc_record_login_success
 proc_create_password_reset_token / proc_reset_password
 proc_change_user_status
 proc_assign_user_role / proc_remove_user_role
@@ -122,7 +120,7 @@ app/services/operations_service.py
 app/services/export_service.py
 ```
 
-`app/security.py` đóng gói Argon2, phát/kiểm tra JWT access và refresh, đồng
+`app/security.py` đóng gói Argon2, phát/kiểm tra JWT access, đồng
 thời hash token trước khi lưu database. `AuthService` không phụ thuộc FastAPI,
 do đó được test độc lập trước khi mở endpoint HTTP.
 
@@ -147,28 +145,23 @@ Submit Application
 
 Test kết thúc bằng `ROLLBACK`, không để lại dữ liệu mẫu trong database.
 
-## 5. Chạy migration
+## 5. Thiết lập database
 
 Bật Docker Desktop rồi chạy trong Git Bash:
 
 ```bash
 docker compose up -d postgres
-bash scripts/dev.sh db-migrate
+bash scripts/dev.sh db-setup
 bash scripts/dev.sh db-test
 ```
 
-Migration đã chạy được ghi tại:
+Schema được tạo một lần trên volume mới; mỗi lần chạy setup, procedures và
+functions được nạp lại để thuận tiện chỉnh SQL trong lúc phát triển.
 
-```text
-public.schema_migrations
-```
-
-Chạy lại lệnh không áp dụng lại migration cũ.
-
-Jenkins cũng chạy migration trên PostgreSQL tạm trước khi chạy Postman health
+Jenkins cũng chạy database setup trên PostgreSQL tạm trước khi chạy Postman health
 test, nhờ đó lỗi cú pháp SQL hoặc lỗi tạo routine sẽ làm pipeline thất bại. Khi
 pipeline kết thúc, database volume tạm của Jenkins được xóa để lần build sau
-kiểm tra lại toàn bộ migration từ database sạch.
+kiểm tra lại schema và routines từ database sạch.
 
 ## 6. Giới hạn có chủ đích
 
@@ -183,6 +176,6 @@ Invoice hiện bằng 0 cho tới khi lịch trả góp được quyết định
 ## 7. API và kiểm thử
 
 Danh sách endpoint nằm trong `docs/API.md`. Database có ba integration flow.
-Postman/Newman chạy 28 request bao phủ health/readiness, JWT rotation và luồng
+Postman/Newman chạy request health/readiness, đăng nhập và luồng
 Application → Store → Contract → Promotion → Revenue → Invoice → Payment →
 Notification → PDF/CSV. Seed local tạo ba tài khoản role mẫu và 2.000 Revenue.

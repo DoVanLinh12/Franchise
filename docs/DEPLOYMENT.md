@@ -9,7 +9,7 @@ cd /d/Franchise
 docker compose up -d --build
 ```
 
-Compose tự chạy migration và seed idempotent trước khi API khởi động; không cần
+Compose tự thiết lập schema, nạp procedures và seed dữ liệu trước khi API khởi động; không cần
 chạy thêm lệnh chuẩn bị database ở lần chạy đầu.
 
 Địa chỉ:

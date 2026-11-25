@@ -1,3 +1,38 @@
+-- Stored procedures/functions for 010_authentication.sql.
+
+-- Keep an existing local database aligned with the simplified auth scope.
+ALTER TABLE app.users
+    DROP CONSTRAINT IF EXISTS ck_users_failed_login_attempts,
+    DROP COLUMN IF EXISTS failed_login_attempts,
+    DROP COLUMN IF EXISTS locked_until;
+UPDATE app.users SET status = 'INACTIVE' WHERE status = 'LOCKED';
+ALTER TABLE app.users DROP CONSTRAINT IF EXISTS ck_users_status;
+ALTER TABLE app.users ADD CONSTRAINT ck_users_status
+    CHECK (status IN ('ACTIVE', 'INACTIVE'));
+DROP TABLE IF EXISTS app.refresh_tokens;
+DROP PROCEDURE IF EXISTS app.proc_record_login_failure(text, integer, integer);
+DO $$
+DECLARE
+    old_routine record;
+BEGIN
+    FOR old_routine IN
+        SELECT p.oid::regprocedure AS signature
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'app'
+          AND p.prokind = 'p'
+          AND p.proname IN (
+              'proc_store_refresh_token',
+              'proc_rotate_refresh_token',
+              'proc_revoke_refresh_token'
+          )
+    LOOP
+        EXECUTE 'DROP PROCEDURE ' || old_routine.signature;
+    END LOOP;
+END;
+$$;
+DROP FUNCTION IF EXISTS app.fn_get_user_auth_by_email(text);
+
 CREATE OR REPLACE PROCEDURE app.proc_register_user(
     p_user_id uuid,
     p_email text,
@@ -49,8 +84,6 @@ RETURNS TABLE (
     password_hash text,
     full_name varchar,
     status varchar,
-    failed_login_attempts integer,
-    locked_until timestamptz,
     deleted_at timestamptz
 )
 LANGUAGE sql
@@ -58,7 +91,7 @@ STABLE
 AS $$
     SELECT
         u.id, u.email, u.password_hash, u.full_name, u.status,
-        u.failed_login_attempts, u.locked_until, u.deleted_at
+        u.deleted_at
     FROM app.users u
     WHERE lower(u.email) = lower(btrim(p_email))
       AND u.deleted_at IS NULL;
@@ -99,55 +132,6 @@ AS $$
     ORDER BY r.code;
 $$;
 
-CREATE OR REPLACE PROCEDURE app.proc_record_login_failure(
-    p_email text,
-    p_max_attempts integer,
-    p_lock_minutes integer
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_user app.users%ROWTYPE;
-    v_attempts integer;
-BEGIN
-    SELECT * INTO v_user
-    FROM app.users
-    WHERE lower(email) = lower(btrim(p_email))
-      AND deleted_at IS NULL
-    FOR UPDATE;
-
-    IF NOT FOUND OR v_user.status <> 'ACTIVE' THEN
-        RETURN;
-    END IF;
-
-    v_attempts := CASE
-        WHEN v_user.locked_until IS NOT NULL
-             AND v_user.locked_until <= now() THEN 1
-        ELSE v_user.failed_login_attempts + 1
-    END;
-    UPDATE app.users
-    SET failed_login_attempts = v_attempts,
-        locked_until = CASE
-            WHEN v_attempts >= p_max_attempts
-                THEN now() + make_interval(mins => p_lock_minutes)
-            ELSE locked_until
-        END,
-        updated_at = now()
-    WHERE id = v_user.id;
-
-    INSERT INTO app.audit_logs (
-        actor_id, action, entity_type, entity_id, new_values
-    )
-    VALUES (
-        NULL,
-        'LOGIN_FAILED',
-        'USER',
-        v_user.id,
-        jsonb_build_object('failed_login_attempts', v_attempts)
-    );
-END;
-$$;
-
 CREATE OR REPLACE PROCEDURE app.proc_record_login_success(p_user_id uuid)
 LANGUAGE plpgsql
 AS $$
@@ -155,9 +139,7 @@ BEGIN
     PERFORM app.assert_active_user(p_user_id);
 
     UPDATE app.users
-    SET failed_login_attempts = 0,
-        locked_until = NULL,
-        last_login_at = now(),
+    SET last_login_at = now(),
         updated_at = now()
     WHERE id = p_user_id;
 
@@ -180,119 +162,6 @@ BEGIN
     SET password_hash = p_password_hash,
         updated_at = now()
     WHERE id = p_user_id;
-END;
-$$;
-
-CREATE OR REPLACE PROCEDURE app.proc_store_refresh_token(
-    p_token_id uuid,
-    p_user_id uuid,
-    p_token_hash text,
-    p_expires_at timestamptz,
-    p_ip_address inet,
-    p_user_agent text
-)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    PERFORM app.assert_active_user(p_user_id);
-    IF EXISTS (
-        SELECT 1 FROM app.users
-        WHERE id = p_user_id AND locked_until > now()
-    ) THEN
-        RAISE EXCEPTION 'USER_TEMPORARILY_LOCKED';
-    END IF;
-
-    INSERT INTO app.refresh_tokens (
-        id, user_id, token_hash, expires_at, created_by_ip, user_agent
-    )
-    VALUES (
-        p_token_id, p_user_id, p_token_hash, p_expires_at,
-        p_ip_address, nullif(left(btrim(p_user_agent), 500), '')
-    );
-END;
-$$;
-
-CREATE OR REPLACE PROCEDURE app.proc_rotate_refresh_token(
-    p_old_token_hash text,
-    p_user_id uuid,
-    p_new_token_id uuid,
-    p_new_token_hash text,
-    p_new_expires_at timestamptz,
-    p_ip_address inet,
-    p_user_agent text
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_old app.refresh_tokens%ROWTYPE;
-BEGIN
-    SELECT * INTO v_old
-    FROM app.refresh_tokens
-    WHERE token_hash = p_old_token_hash
-    FOR UPDATE;
-
-    IF NOT FOUND
-       OR v_old.user_id <> p_user_id
-       OR v_old.revoked_at IS NOT NULL
-       OR v_old.expires_at <= now()
-       OR NOT app.is_active_user(p_user_id)
-       OR EXISTS (
-            SELECT 1 FROM app.users
-            WHERE id = p_user_id AND locked_until > now()
-       ) THEN
-        RAISE EXCEPTION 'REFRESH_TOKEN_INVALID';
-    END IF;
-
-    INSERT INTO app.refresh_tokens (
-        id, user_id, token_hash, expires_at, created_by_ip, user_agent
-    )
-    VALUES (
-        p_new_token_id, p_user_id, p_new_token_hash, p_new_expires_at,
-        p_ip_address, nullif(left(btrim(p_user_agent), 500), '')
-    );
-
-    UPDATE app.refresh_tokens
-    SET revoked_at = now(),
-        revoke_reason = 'ROTATED',
-        replaced_by_token_id = p_new_token_id
-    WHERE id = v_old.id;
-
-    INSERT INTO app.audit_logs (
-        actor_id, action, entity_type, entity_id
-    )
-    VALUES (p_user_id, 'REFRESH_TOKEN_ROTATED', 'USER', p_user_id);
-END;
-$$;
-
-CREATE OR REPLACE PROCEDURE app.proc_revoke_refresh_token(
-    p_token_hash text,
-    p_user_id uuid,
-    p_reason text
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_token app.refresh_tokens%ROWTYPE;
-BEGIN
-    SELECT * INTO v_token
-    FROM app.refresh_tokens
-    WHERE token_hash = p_token_hash
-      AND user_id = p_user_id
-    FOR UPDATE;
-
-    IF NOT FOUND OR v_token.revoked_at IS NOT NULL THEN
-        RAISE EXCEPTION 'REFRESH_TOKEN_INVALID';
-    END IF;
-
-    UPDATE app.refresh_tokens
-    SET revoked_at = now(),
-        revoke_reason = coalesce(nullif(btrim(p_reason), ''), 'LOGOUT')
-    WHERE id = v_token.id;
-
-    INSERT INTO app.audit_logs (
-        actor_id, action, entity_type, entity_id
-    )
-    VALUES (p_user_id, 'LOGOUT', 'USER', p_user_id);
 END;
 $$;
 
@@ -348,14 +217,8 @@ BEGIN
     UPDATE app.users
     SET password_hash = p_new_password_hash,
         password_changed_at = now(),
-        failed_login_attempts = 0,
-        locked_until = NULL,
         updated_at = now()
     WHERE id = v_token.user_id;
-
-    UPDATE app.refresh_tokens
-    SET revoked_at = now(), revoke_reason = 'PASSWORD_RESET'
-    WHERE user_id = v_token.user_id AND revoked_at IS NULL;
 
     INSERT INTO app.audit_logs (
         actor_id, action, entity_type, entity_id
@@ -377,7 +240,7 @@ DECLARE
     v_active_admin_count integer;
 BEGIN
     PERFORM app.assert_role(p_actor_id, 'ADMIN');
-    IF p_new_status NOT IN ('ACTIVE', 'INACTIVE', 'LOCKED') THEN
+    IF p_new_status NOT IN ('ACTIVE', 'INACTIVE') THEN
         RAISE EXCEPTION 'USER_STATUS_INVALID';
     END IF;
     IF nullif(btrim(p_reason), '') IS NULL THEN
@@ -408,16 +271,8 @@ BEGIN
 
     UPDATE app.users
     SET status = p_new_status,
-        failed_login_attempts = 0,
-        locked_until = NULL,
         updated_at = now()
     WHERE id = p_user_id;
-
-    IF p_new_status <> 'ACTIVE' THEN
-        UPDATE app.refresh_tokens
-        SET revoked_at = now(), revoke_reason = 'USER_STATUS_CHANGED'
-        WHERE user_id = p_user_id AND revoked_at IS NULL;
-    END IF;
 
     INSERT INTO app.audit_logs (
         actor_id, action, entity_type, entity_id,

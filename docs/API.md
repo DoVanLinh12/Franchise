@@ -1,17 +1,14 @@
 # API hiện tại
 
 Base URL local: `http://localhost:8000/api/v1`. Swagger tại
-`http://localhost:8000/docs`. Các endpoint ngoài đăng ký, đăng nhập, refresh,
-reset-password và health yêu cầu `Authorization: Bearer <access_token>`.
+`http://localhost:8000/docs`. Các endpoint ngoài đăng ký, đăng nhập,
+đặt lại mật khẩu và health yêu cầu `Authorization: Bearer <access_token>`.
 
 ## Authentication và User
 
 ```text
 POST   /auth/register
 POST   /auth/login
-POST   /auth/token                 OAuth2 password form
-POST   /auth/refresh
-POST   /auth/logout
 POST   /auth/password-reset/request
 POST   /auth/password-reset/confirm
 GET    /auth/me

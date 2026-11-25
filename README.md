@@ -96,8 +96,10 @@ rows = await connection.fetch(
 |   |   `-- Dockerfile
 |-- infrastructure/jenkins/      # Jenkins chạy local
 |-- database/
-|   |-- migrations/              # SQL schema + Stored Procedure/Function
-|   `-- run-migrations.sh        # Migration runner
+|   |-- schema/                  # Một file duy nhất tạo toàn bộ bảng
+|   |-- procedures/              # Stored Procedure/Function theo chức năng
+|   |-- reference-data/          # Role hệ thống cần thiết
+|   `-- run-database-setup.sh    # Khởi tạo schema và cài procedures
 |-- postman/                     # Postman collection kiểm thử API
 |-- scripts/dev.sh
 |-- docker-compose.yml
@@ -119,8 +121,8 @@ Build lại sau khi thay đổi dependency hoặc Dockerfile:
 docker compose up -d --build
 ```
 
-Lệnh trên tự build API, chờ PostgreSQL/Redis, chạy migration, seed dữ liệu mẫu
-rồi mới khởi động API. Có thể gọi `db-migrate` hoặc `db-seed` riêng khi cần kiểm
+Lệnh trên tự build API, chờ PostgreSQL/Redis, thiết lập database, seed dữ liệu mẫu
+rồi mới khởi động API. Có thể gọi `db-setup` hoặc `db-seed` riêng khi cần kiểm
 tra thủ công; chạy lại an toàn vì cả hai đều idempotent.
 
 - FastAPI: http://localhost:8000
@@ -128,7 +130,7 @@ tra thủ công; chạy lại an toàn vì cả hai đều idempotent.
 - Health: http://localhost:8000/health
 - Frontend: http://localhost:3000
 
-Stack mặc định gồm PostgreSQL, Redis, migration/seed one-shot, API và frontend.
+Stack mặc định gồm PostgreSQL, Redis, database-setup/seed one-shot, API và frontend.
 Frontend là giao diện vận hành hệ thống, không phải công cụ nhập endpoint để thử
 API. Sau khi đăng nhập, menu và thao tác được hiển thị theo vai trò:
 
@@ -139,14 +141,9 @@ API. Sau khi đăng nhập, menu và thao tác được hiển thị theo vai tr
 Swagger và Postman được giữ riêng cho việc xem đặc tả, kiểm thử và lưu bằng chứng
 test API.
 
-Dữ liệu local mặc định gồm các hồ sơ và cửa hàng Mộc Miên Coffee tại nhiều tỉnh
-thành, hợp đồng, khuyến mãi, 2.520 doanh thu theo ngày, hóa đơn, thanh toán,
-thông báo và audit log. Khi cần xóa dữ liệu do các lần test trước tạo ra và nạp
-lại bộ dữ liệu chuẩn, chạy trong Git Bash:
-
-```bash
-bash scripts/dev.sh db-reset
-```
+Dữ liệu mẫu được nạp trong lần khởi tạo database mới. Repo không còn lệnh hay
+script xóa/reset dữ liệu local; khi cần bắt đầu lại, hãy chủ động tạo database
+mới và lưu ý thao tác đó có thể làm mất dữ liệu đang dùng.
 
 Chạy thêm Celery scheduler/worker và MailHog khi cần:
 
@@ -203,20 +200,30 @@ Schema được quản lý bằng các file SQL có thứ tự:
 
 ```text
 database/
-`-- migrations/
-    |-- 001_identity_application_store_contract.sql
-    |-- 002_application_store_contract_routines.sql
-    |-- 003_identity_authentication_tables.sql
-    |-- 004_identity_authentication_routines.sql
-    |-- 005_revenue_billing_tables.sql
-    |-- 006_revenue_billing_routines.sql
-    |-- 007_access_and_notification_routines.sql
-    `-- 008_business_notification_trigger.sql
+|-- schema/001_create_all_tables.sql
+|-- reference-data/001_roles.sql
+`-- procedures/
+    |-- 001_authorization.sql
+    |-- 010_authentication.sql
+    |-- 020_applications.sql
+    |-- 030_stores_contracts.sql
+    |-- 040_promotions.sql
+    |-- 050_revenues.sql
+    |-- 060_billing_payments.sql
+    |-- 070_notifications_audit.sql
+    `-- 080_queries_reports.sql
 ```
 
-Các script này là nguồn chính thức để tạo table, index, Function và Stored
-Procedure. Migration đã áp dụng được ghi trong `public.schema_migrations`; không
-sửa migration cũ sau khi đã áp dụng mà phải tạo migration mới.
+File schema tạo các bảng/index/constraint. Mỗi file trong `procedures/` gom
+Stored Procedure/Function của một nhóm chức năng. `database-setup` chạy schema
+khi chưa có bảng, rồi nạp roles và áp dụng lại các procedure/function mỗi lần
+chạy. Compose chuyển sang volume PostgreSQL mới `franchise_postgres_v2_data`;
+volume cũ được giữ nguyên và không tự động xóa.
+
+Khi chỉ sửa procedure/function, chạy `bash scripts/dev.sh db-setup`. Khi thay
+đổi cấu trúc bảng, cần tạo lại database local bằng `docker compose down -v`
+rồi `docker compose up -d --build`; lệnh `down -v` xóa dữ liệu trong volume
+đang dùng.
 
 ## Jenkins local
 

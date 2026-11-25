@@ -1,18 +1,26 @@
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.services.auth_service import AuthService
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+    ],
 ) -> dict[str, Any]:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token is required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     service = AuthService()
-    claims = service.verify_access_token(token)
+    claims = service.verify_access_token(credentials.credentials)
     user = await service.get_user(claims.user_id)
     if user is None or user.get("status") != "ACTIVE":
         raise HTTPException(

@@ -18,10 +18,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
 class PasswordResetRequest(BaseModel):
     email: str
 
@@ -33,10 +29,8 @@ class PasswordResetConfirmRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str
     access_expires_at: datetime
-    refresh_expires_at: datetime
 
 
 class UserResponse(BaseModel):

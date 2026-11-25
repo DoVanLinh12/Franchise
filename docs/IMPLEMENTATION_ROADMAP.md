@@ -1,8 +1,7 @@
 # Lộ trình triển khai 10 giai đoạn
 
-1. **Identity core** — User, Argon2, JWT access/refresh, reset password, RBAC,
-   audit và khóa đăng nhập.
-2. **Authentication API** — endpoint đăng ký/đăng nhập/refresh/logout/reset,
+1. **Identity core** — User, Argon2, access JWT, reset password, RBAC và audit.
+2. **Authentication API** — endpoint đăng ký/đăng nhập/reset,
    dependency Bearer token, policy role và quản trị User.
 3. **Onboarding và Contract activation** — Application, Store, Contract,
    khoản thanh toán ban đầu 20% và kích hoạt Store.

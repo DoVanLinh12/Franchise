@@ -50,20 +50,6 @@ class AuthRepository:
         )
         return [str(row["code"]) for row in rows]
 
-    async def record_login_failure(
-        self,
-        connection: asyncpg.Connection,
-        email: str,
-        max_attempts: int,
-        lock_minutes: int,
-    ) -> None:
-        await connection.execute(
-            "CALL app.proc_record_login_failure($1, $2, $3)",
-            email,
-            max_attempts,
-            lock_minutes,
-        )
-
     async def record_login_success(
         self, connection: asyncpg.Connection, user_id: UUID
     ) -> None:
@@ -81,65 +67,6 @@ class AuthRepository:
             "CALL app.proc_update_password_hash($1, $2)",
             user_id,
             password_hash,
-        )
-
-    async def store_refresh_token(
-        self,
-        connection: asyncpg.Connection,
-        *,
-        token_id: UUID,
-        user_id: UUID,
-        token_hash: str,
-        expires_at: datetime,
-        ip_address: IPv4Address | IPv6Address | None,
-        user_agent: str | None,
-    ) -> None:
-        await connection.execute(
-            "CALL app.proc_store_refresh_token($1, $2, $3, $4, $5, $6)",
-            token_id,
-            user_id,
-            token_hash,
-            expires_at,
-            ip_address,
-            user_agent,
-        )
-
-    async def rotate_refresh_token(
-        self,
-        connection: asyncpg.Connection,
-        *,
-        old_token_hash: str,
-        user_id: UUID,
-        new_token_id: UUID,
-        new_token_hash: str,
-        new_expires_at: datetime,
-        ip_address: IPv4Address | IPv6Address | None,
-        user_agent: str | None,
-    ) -> None:
-        await connection.execute(
-            "CALL app.proc_rotate_refresh_token("
-            "$1, $2, $3, $4, $5, $6, $7)",
-            old_token_hash,
-            user_id,
-            new_token_id,
-            new_token_hash,
-            new_expires_at,
-            ip_address,
-            user_agent,
-        )
-
-    async def revoke_refresh_token(
-        self,
-        connection: asyncpg.Connection,
-        token_hash: str,
-        user_id: UUID,
-        reason: str,
-    ) -> None:
-        await connection.execute(
-            "CALL app.proc_revoke_refresh_token($1, $2, $3)",
-            token_hash,
-            user_id,
-            reason,
         )
 
     async def create_password_reset_token(

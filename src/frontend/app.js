@@ -3,7 +3,6 @@
 const state = {
   apiUrl: "http://localhost:8000",
   accessToken: sessionStorage.getItem("franchise.accessToken") || "",
-  refreshToken: sessionStorage.getItem("franchise.refreshToken") || "",
   user: null,
   resource: "stores",
   items: [],
@@ -152,33 +151,14 @@ function showToast(message, error = false) {
   showToast.timeout = window.setTimeout(() => toast.classList.add("hidden"), 3500);
 }
 
-function setSession(accessToken, refreshToken) {
+function setSession(accessToken) {
   state.accessToken = accessToken || "";
-  state.refreshToken = refreshToken || "";
+  sessionStorage.removeItem("franchise.refreshToken");
   if (state.accessToken) sessionStorage.setItem("franchise.accessToken", state.accessToken);
   else sessionStorage.removeItem("franchise.accessToken");
-  if (state.refreshToken) sessionStorage.setItem("franchise.refreshToken", state.refreshToken);
-  else sessionStorage.removeItem("franchise.refreshToken");
 }
 
-async function refreshAccessToken() {
-  if (!state.refreshToken) return false;
-  try {
-    const response = await fetch(`${state.apiUrl}/api/v1/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: state.refreshToken }),
-    });
-    if (!response.ok) return false;
-    const data = await response.json();
-    setSession(data.access_token, data.refresh_token);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function apiRequest(path, options = {}, retry = true) {
+async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (state.accessToken) headers.set("Authorization", `Bearer ${state.accessToken}`);
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -190,9 +170,9 @@ async function apiRequest(path, options = {}, retry = true) {
   } catch (error) {
     throw new Error("Không kết nối được máy chủ. Hãy kiểm tra Docker Desktop.", { cause: error });
   }
-  const isAuthCommand = path.includes("/auth/login") || path.includes("/auth/refresh") || path.includes("/auth/register");
-  if (response.status === 401 && retry && state.refreshToken && !isAuthCommand) {
-    if (await refreshAccessToken()) return apiRequest(path, options, false);
+  if (response.status === 401 && state.accessToken && !path.includes("/auth/login")) {
+    setSession("");
+    showLogin();
   }
   const contentType = response.headers.get("content-type") || "";
   let data = null;
@@ -265,9 +245,9 @@ async function handleLogin(event) {
     const result = await apiRequest("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: element("email").value.trim(), password: element("password").value }),
-    }, false);
+    });
     if (!result.ok) throw new Error(resultMessage(result));
-    setSession(result.data.access_token, result.data.refresh_token);
+    setSession(result.data.access_token);
     await loadCurrentUser();
     message.textContent = "";
     await openView("dashboard");
@@ -280,15 +260,7 @@ async function handleLogin(event) {
 }
 
 async function handleLogout() {
-  if (state.refreshToken) {
-    try {
-      await apiRequest("/api/v1/auth/logout", {
-        method: "POST",
-        body: JSON.stringify({ refresh_token: state.refreshToken }),
-      }, false);
-    } catch { /* Phiên local vẫn được xóa khi API tạm thời không kết nối. */ }
-  }
-  setSession("", "");
+  setSession("");
   showLogin();
 }
 
@@ -603,7 +575,7 @@ function openRegister() {
       { name: "password", label: "Mật khẩu", type: "password", required: true, placeholder: "Tối thiểu 8 ký tự" },
     ],
     onSubmit: async (values) => {
-      const result = await apiRequest("/api/v1/auth/register", { method: "POST", body: JSON.stringify(values) }, false);
+      const result = await apiRequest("/api/v1/auth/register", { method: "POST", body: JSON.stringify(values) });
       if (!result.ok) throw new Error(resultMessage(result));
       element("email").value = values.email;
       element("password").value = values.password;

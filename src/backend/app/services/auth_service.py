@@ -9,13 +9,13 @@ from uuid import UUID, uuid4
 
 from app.config import Settings, settings
 from app.database import get_pool
-from app.domain import RegisterUserCommand, TokenClaims, TokenPair
+from app.domain import AccessToken, RegisterUserCommand, TokenClaims
 from app.exceptions import AuthenticationError, ValidationError
 from app.repositories.auth_repository import AuthRepository
 from app.security import JwtService, PasswordService, hash_token
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-VALID_USER_STATUSES = {"ACTIVE", "INACTIVE", "LOCKED"}
+VALID_USER_STATUSES = {"ACTIVE", "INACTIVE"}
 VALID_ROLE_CODES = {"ADMIN", "STORE_OWNER", "ACCOUNTANT"}
 
 
@@ -52,10 +52,7 @@ class AuthService:
         self,
         email: str,
         password: str,
-        *,
-        client_ip: str | None = None,
-        user_agent: str | None = None,
-    ) -> TokenPair:
+    ) -> AccessToken:
         normalized_email = email.lower().strip()
         async with get_pool().acquire() as connection:
             user = await self._repository.get_auth_by_email(
@@ -65,92 +62,28 @@ class AuthService:
                 self._passwords.consume_dummy_verification(password)
                 raise AuthenticationError("Email or password is incorrect")
 
-            now = datetime.now(UTC)
             is_available = (
-                user["status"] == "ACTIVE"
-                and user["deleted_at"] is None
-                and (
-                    user["locked_until"] is None
-                    or user["locked_until"] <= now
-                )
+                user["status"] == "ACTIVE" and user["deleted_at"] is None
             )
             verified, updated_hash = self._passwords.verify_and_update(
                 password, user["password_hash"]
             )
             if not is_available or not verified:
-                is_temporarily_locked = (
-                    user["locked_until"] is not None
-                    and user["locked_until"] > now
-                )
-                if user["status"] == "ACTIVE" and not is_temporarily_locked:
-                    async with connection.transaction():
-                        await self._repository.record_login_failure(
-                            connection,
-                            normalized_email,
-                            self._config.MAX_LOGIN_ATTEMPTS,
-                            self._config.LOGIN_LOCK_MINUTES,
-                        )
                 raise AuthenticationError("Email or password is incorrect")
 
             user_id = UUID(str(user["id"]))
             roles = await self._repository.get_roles(connection, user_id)
-            pair = self._jwt.issue_pair(user_id, roles)
+            access_token = self._jwt.issue_access_token(user_id, roles)
             async with connection.transaction():
                 if updated_hash is not None:
                     await self._repository.update_password_hash(
                         connection, user_id, updated_hash
                     )
                 await self._repository.record_login_success(connection, user_id)
-                await self._repository.store_refresh_token(
-                    connection,
-                    token_id=pair.refresh_token_id,
-                    user_id=user_id,
-                    token_hash=hash_token(pair.refresh_token),
-                    expires_at=pair.refresh_expires_at,
-                    ip_address=self._parse_ip(client_ip),
-                    user_agent=user_agent,
-                )
-            return pair
-
-    async def refresh(
-        self,
-        refresh_token: str,
-        *,
-        client_ip: str | None = None,
-        user_agent: str | None = None,
-    ) -> TokenPair:
-        claims = self._jwt.decode(refresh_token, "refresh")
-        async with get_pool().acquire() as connection:
-            roles = await self._repository.get_roles(
-                connection, claims.user_id
-            )
-            pair = self._jwt.issue_pair(claims.user_id, roles)
-            async with connection.transaction():
-                await self._repository.rotate_refresh_token(
-                    connection,
-                    old_token_hash=hash_token(refresh_token),
-                    user_id=claims.user_id,
-                    new_token_id=pair.refresh_token_id,
-                    new_token_hash=hash_token(pair.refresh_token),
-                    new_expires_at=pair.refresh_expires_at,
-                    ip_address=self._parse_ip(client_ip),
-                    user_agent=user_agent,
-                )
-        return pair
-
-    async def logout(self, refresh_token: str) -> None:
-        claims = self._jwt.decode(refresh_token, "refresh")
-        async with get_pool().acquire() as connection:
-            async with connection.transaction():
-                await self._repository.revoke_refresh_token(
-                    connection,
-                    hash_token(refresh_token),
-                    claims.user_id,
-                    "LOGOUT",
-                )
+            return access_token
 
     def verify_access_token(self, access_token: str) -> TokenClaims:
-        return self._jwt.decode(access_token, "access")
+        return self._jwt.decode_access_token(access_token)
 
     async def request_password_reset(
         self, email: str, *, client_ip: str | None = None

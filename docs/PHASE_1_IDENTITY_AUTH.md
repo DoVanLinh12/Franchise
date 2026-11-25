@@ -22,19 +22,15 @@ Không dùng SQLAlchemy hay ORM. Python chỉ gọi routine bằng `asyncpg` và
 
 - Đăng ký User với email chuẩn hóa chữ thường.
 - Mật khẩu được hash bằng Argon2; không lưu hoặc ghi log mật khẩu thô.
-- Theo dõi lần đăng nhập cuối, số lần sai và thời điểm khóa tạm.
-- Sau 5 lần sai, tài khoản bị chặn đăng nhập 15 phút theo cấu hình.
+- Theo dõi lần đăng nhập thành công gần nhất.
 - Reset mật khẩu dùng token ngẫu nhiên một lần, mặc định hết hạn sau 30 phút.
 
 ### JWT session
 
 - Access token mặc định 15 phút.
-- Refresh token mặc định 7 ngày.
 - JWT có `sub`, `jti`, `type`, `iat`, `nbf`, `exp`, `iss`, `aud`.
-- Refresh token được rotation: dùng thành công thì token cũ bị revoke.
-- Logout revoke refresh token.
-- Database chỉ giữ SHA-256 hash của refresh/reset token.
-- Reset mật khẩu hoặc vô hiệu hóa User revoke mọi refresh token còn hiệu lực.
+- Chỉ dùng access token; khi hết hạn, người dùng đăng nhập lại.
+- Đặt lại mật khẩu dùng token ngẫu nhiên một lần; database giữ SHA-256 hash.
 
 JWT được ký chứ không mã hóa, vì vậy không đưa dữ liệu bí mật vào claims.
 
@@ -50,7 +46,7 @@ ACCOUNTANT
 
 Admin có thể gán/gỡ role và đổi trạng thái User thông qua Service/Stored
 Procedure. Database ngăn việc làm mất Admin hoạt động cuối cùng. Các thay đổi
-trạng thái, role, đăng nhập, refresh và reset mật khẩu đều được ghi Audit Log.
+trạng thái, role, đăng nhập thành công và reset mật khẩu đều được ghi Audit Log.
 
 Người vừa đăng ký chưa có role. Role `STORE_OWNER` được gán khi Admin tạo Store
 từ hồ sơ Franchise đã duyệt; role khác do Admin quản lý.
@@ -58,8 +54,8 @@ từ hồ sơ Franchise đã duyệt; role khác do Admin quản lý.
 ## File chính
 
 ```text
-database/migrations/003_identity_authentication_tables.sql
-database/migrations/004_identity_authentication_routines.sql
+database/schema/001_create_all_tables.sql
+database/procedures/010_authentication.sql
 database/tests/002_identity_authentication_flow.sql
 src/backend/app/security.py
 src/backend/app/repositories/auth_repository.py
@@ -78,10 +74,7 @@ JWT_ALGORITHM
 JWT_ISSUER
 JWT_AUDIENCE
 ACCESS_TOKEN_EXPIRE_MINUTES
-REFRESH_TOKEN_EXPIRE_DAYS
 PASSWORD_RESET_EXPIRE_MINUTES
-MAX_LOGIN_ATTEMPTS
-LOGIN_LOCK_MINUTES
 ```
 
 `JWT_SECRET_KEY` mẫu chỉ dành cho local. Sao chép `.env.example` thành `.env`
@@ -109,7 +102,7 @@ mypy: passed (16 source files)
 pytest: 25 passed
 coverage: 87.20%
 Database integration: 2/2 SQL flow passed
-Migration idempotency: passed (001–004 được skip khi chạy lại)
+Database setup uses the single schema file and feature-grouped procedures.
 Runtime health: GET /health → {"status":"ok"}
 ```
 

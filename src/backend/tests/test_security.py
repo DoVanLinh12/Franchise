@@ -21,25 +21,27 @@ def test_jwt_service_issues_typed_token_pair():
     config = Settings(
         JWT_SECRET_KEY="unit-test-secret-that-is-long-enough-for-tests",
         ACCESS_TOKEN_EXPIRE_MINUTES=10,
-        REFRESH_TOKEN_EXPIRE_DAYS=2,
     )
     service = JwtService(config)
     user_id = uuid4()
 
-    pair = service.issue_pair(user_id, ["ADMIN"])
+    token = service.issue_access_token(user_id, ["ADMIN"])
 
-    assert service.decode(pair.access_token, "access").user_id == user_id
-    assert service.decode(pair.refresh_token, "refresh").user_id == user_id
-    assert len(hash_token(pair.refresh_token)) == 64
+    assert service.decode_access_token(token.access_token).user_id == user_id
+    assert len(hash_token("password-reset-token")) == 64
     with pytest.raises(TokenError, match="Unexpected token type"):
-        service.decode(pair.access_token, "refresh")
+        service.decode_access_token(service._encode({
+            "sub": str(user_id), "jti": str(uuid4()), "type": "refresh",
+            "iat": 1900000000, "nbf": 1900000000, "exp": 1900000600,
+            "iss": config.JWT_ISSUER, "aud": config.JWT_AUDIENCE,
+        }))
 
 
 def test_jwt_service_rejects_tampered_token():
     service = JwtService(
         Settings(JWT_SECRET_KEY="unit-test-secret-that-is-long-enough")
     )
-    token = service.issue_pair(uuid4(), []).access_token
+    token = service.issue_access_token(uuid4(), []).access_token
 
     with pytest.raises(TokenError, match="Invalid or expired"):
-        service.decode(f"{token}tampered", "access")
+        service.decode_access_token(f"{token}tampered")

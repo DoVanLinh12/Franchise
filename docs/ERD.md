@@ -6,9 +6,7 @@ Promotion, Invoice hoặc Payment.
 ```mermaid
 erDiagram
     USERS ||--o{ USER_ROLES : has
-    USERS ||--o{ REFRESH_TOKENS : owns
     USERS ||--o{ PASSWORD_RESET_TOKENS : requests
-    REFRESH_TOKENS ||--o| REFRESH_TOKENS : replaces
     ROLES ||--o{ USER_ROLES : assigned
     USERS ||--o{ FRANCHISE_APPLICATIONS : submits
     FRANCHISE_APPLICATIONS ||--o| STORES : creates
@@ -22,8 +20,6 @@ erDiagram
         text password_hash
         varchar full_name
         varchar status
-        int failed_login_attempts
-        timestamptz locked_until
         timestamptz last_login_at
         timestamptz password_changed_at
         timestamptz deleted_at
@@ -38,15 +34,6 @@ erDiagram
     USER_ROLES {
         uuid user_id PK,FK
         smallint role_id PK,FK
-    }
-
-    REFRESH_TOKENS {
-        uuid id PK
-        uuid user_id FK
-        char token_hash UK
-        timestamptz expires_at
-        timestamptz revoked_at
-        uuid replaced_by_token_id FK
     }
 
     PASSWORD_RESET_TOKENS {
@@ -98,7 +85,9 @@ erDiagram
     }
 ```
 
-Nguồn chính xác cuối cùng của schema là các file trong `database/migrations`.
+Nguồn chính thức duy nhất để tạo bảng/index/constraint là
+`database/schema/001_create_all_tables.sql`. Procedures và functions được
+nhóm theo chức năng trong `database/procedures/`.
 
 ## Billing và vận hành
 

@@ -1,8 +1,6 @@
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Request, Response
 
 from app.api.dependencies import AdminUser, CurrentUser
 from app.api.schemas import (
@@ -11,14 +9,13 @@ from app.api.schemas import (
     MessageResponse,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
-    RefreshRequest,
     RegisterRequest,
     RoleChangeRequest,
     StatusChangeRequest,
     TokenResponse,
     UserResponse,
 )
-from app.domain import RegisterUserCommand, TokenPair
+from app.domain import AccessToken, RegisterUserCommand
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -29,13 +26,11 @@ def _client_metadata(request: Request) -> tuple[str | None, str | None]:
     return client_ip, request.headers.get("user-agent")
 
 
-def _token_response(pair: TokenPair) -> TokenResponse:
+def _token_response(token: AccessToken) -> TokenResponse:
     return TokenResponse(
-        access_token=pair.access_token,
-        refresh_token=pair.refresh_token,
-        token_type=pair.token_type,
-        access_expires_at=pair.access_expires_at,
-        refresh_expires_at=pair.refresh_expires_at,
+        access_token=token.access_token,
+        token_type=token.token_type,
+        access_expires_at=token.access_expires_at,
     )
 
 
@@ -53,46 +48,12 @@ async def register(payload: RegisterRequest) -> IdResponse:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, request: Request) -> TokenResponse:
-    client_ip, user_agent = _client_metadata(request)
-    pair = await AuthService().authenticate(
+async def login(payload: LoginRequest) -> TokenResponse:
+    token = await AuthService().authenticate(
         payload.email,
         payload.password,
-        client_ip=client_ip,
-        user_agent=user_agent,
     )
-    return _token_response(pair)
-
-
-@router.post("/token", response_model=TokenResponse)
-async def oauth2_token(
-    form: Annotated[OAuth2PasswordRequestForm, Depends()], request: Request
-) -> TokenResponse:
-    client_ip, user_agent = _client_metadata(request)
-    pair = await AuthService().authenticate(
-        form.username,
-        form.password,
-        client_ip=client_ip,
-        user_agent=user_agent,
-    )
-    return _token_response(pair)
-
-
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh(payload: RefreshRequest, request: Request) -> TokenResponse:
-    client_ip, user_agent = _client_metadata(request)
-    pair = await AuthService().refresh(
-        payload.refresh_token,
-        client_ip=client_ip,
-        user_agent=user_agent,
-    )
-    return _token_response(pair)
-
-
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(payload: RefreshRequest) -> Response:
-    await AuthService().logout(payload.refresh_token)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return _token_response(token)
 
 
 @router.post("/password-reset/request", response_model=MessageResponse)

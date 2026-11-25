@@ -53,19 +53,15 @@ class RegisterUserCommand:
 
 
 @dataclass(frozen=True, slots=True)
-class TokenPair:
+class AccessToken:
     access_token: str
-    refresh_token: str
     token_type: str
     access_expires_at: datetime
-    refresh_expires_at: datetime
     access_token_id: UUID
-    refresh_token_id: UUID
 
 
 @dataclass(frozen=True, slots=True)
 class TokenClaims:
     user_id: UUID
     token_id: UUID
-    token_type: str
     expires_at: datetime

@@ -8,6 +8,10 @@ async def test_openapi_contains_auth_and_business_routes(client):
     assert response.status_code == 200
     paths = response.json()["paths"]
     assert "/api/v1/auth/login" in paths
+    assert "/api/v1/auth/register" in paths
+    assert "/api/v1/auth/password-reset/request" in paths
+    assert "/api/v1/auth/password-reset/confirm" in paths
+    assert "/api/v1/auth/token" not in paths
     assert "/api/v1/applications" in paths
     assert "/api/v1/revenues" in paths
     assert "/api/v1/invoices/generate" in paths

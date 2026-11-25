@@ -157,30 +157,33 @@ Không dùng ORM entity. Các dạng dữ liệu được phép:
 
 Pydantic object không phải ORM; nó chỉ validate và serialize dữ liệu API.
 
-## 6. Schema, Stored Procedure và migration
+## 6. Schema và Stored Procedure
 
-Không dùng Alembic vì Alembic thuộc hệ sinh thái SQLAlchemy. Khi bắt đầu tạo
-table, schema được quản lý bằng SQL script có thứ tự:
+Không dùng ORM/Alembic. Cấu trúc SQL được chia theo hai loại: một nguồn duy nhất
+cho toàn bộ bảng và các file function/procedure theo chức năng.
 
 ```text
-database/migrations/
-├── 001_initial_schema.sql
-├── 002_create_functions.sql
-`── 003_create_procedures.sql
+database/
+├── schema/001_create_all_tables.sql
+├── reference-data/001_roles.sql
+├── procedures/
+│   ├── 001_authorization.sql
+│   ├── 010_authentication.sql
+│   ├── 020_applications.sql
+│   ├── 030_stores_contracts.sql
+│   ├── 040_promotions.sql
+│   ├── 050_revenues.sql
+│   ├── 060_billing_payments.sql
+│   ├── 070_notifications_audit.sql
+│   └── 080_queries_reports.sql
+└── run-database-setup.sh
 ```
 
-Nguyên tắc:
-
-- Không sửa script đã áp dụng; tạo script mới.
-- Mỗi script phải có thứ tự và tên mô tả.
-- Dùng transaction khi câu DDL hỗ trợ.
-- Mọi thay đổi của Function/Procedure phải nằm trong migration SQL.
-- Review SQL trước khi chạy.
-- Không tạo script rỗng khi chưa có schema.
-
-Migration được áp dụng bằng `database/run-migrations.sh` thông qua service
-`migrate` của Docker Compose. Các migration đã chạy được ghi tại
-`public.schema_migrations`.
+Docker Compose chạy schema một lần trên volume database mới, sau đó nạp role
+chuẩn và cài đặt các file procedure theo thứ tự. Khi khởi động lại, runner bỏ
+qua bước tạo bảng, nhưng cập nhật lại procedures/functions theo nội dung SQL.
+Database mới dùng volume `franchise_postgres_v2_data`; dữ liệu trong volume cũ
+không bị xóa nhưng cũng không được dùng bởi cấu hình mới.
 
 ## 7. Cấu trúc sẽ mở rộng theo nhu cầu
 
@@ -218,12 +221,13 @@ tối ưu theo thứ tự:
 - Connection pool asyncpg: đã có.
 - Pool lifecycle: đã nối với FastAPI.
 - Repository và Service: đã có cho Application, Store và Contract DRAFT.
-- Identity/Auth core: đăng ký, Argon2, JWT access/refresh, token rotation,
-  logout, password reset, trạng thái User và RBAC đã có ở Service/Repository.
+- Identity/Auth core: đăng ký, Argon2, đăng nhập cấp access JWT, đặt lại mật
+  khẩu, trạng thái User và RBAC đã có ở Service/Repository. Không dùng refresh
+  token; JWT hết hạn thì người dùng đăng nhập lại.
 - Stored Procedure/Function: đã có cho các workflow trên.
 - Database table: đã có lát cắt Identity/RBAC, Application, Store, Contract và
   Audit Log.
-- SQL migration runner: đã có.
+- SQL database setup runner: đã có.
 - API Authentication và nghiệp vụ: đã mở dưới `/api/v1`.
 - Revenue, Promotion, Invoice, Payment và Notification: đã triển khai.
 - Import/export CSV/XLSX, PDF và báo cáo cache Redis: đã triển khai.
