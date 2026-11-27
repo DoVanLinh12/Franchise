@@ -118,7 +118,9 @@ jobs:
           for service in api frontend; do
             if [ "$service" = api ]; then context=src/backend; else context=src/frontend; fi
             image="ghcr.io/${owner}/franchise-${service}"
-            docker build -t "${image}:${{ github.sha }}" -t "${image}:latest" "$context"
+            # Link the package to this repository so GITHUB_TOKEN may push to it.
+            source_label="org.opencontainers.image.source=https://github.com/${{ github.repository }}"
+            docker build --label "$source_label" -t "${image}:${{ github.sha }}" -t "${image}:latest" "$context"
             docker push "${image}:${{ github.sha }}"
             docker push "${image}:latest"
           done
