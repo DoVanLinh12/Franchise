@@ -1,7 +1,0 @@
-workflow-aggregator
-pipeline-stage-view
-git
-github-branch-source
-docker-workflow
-junit
-coverage
