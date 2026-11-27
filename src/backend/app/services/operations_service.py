@@ -161,27 +161,16 @@ class OperationsService:
                     connection, revenue_id, actor_id, reason
                 )
 
-    async def get_record(
-        self, entity: str, record_id: UUID
+    async def get_document(
+        self, kind: str, record_id: UUID
     ) -> dict[str, Any]:
         async with get_pool().acquire() as connection:
-            if entity == "revenue":
-                result = await self._repository.get_revenue(
-                    connection, record_id
-                )
-            elif entity == "promotion":
-                result = await self._repository.get_promotion(
-                    connection, record_id
-                )
-            elif entity == "invoice":
-                result = await self._repository.get_invoice(
-                    connection, record_id
-                )
-            else:
-                raise ValidationError("Unsupported entity")
-        if result is None:
-            raise NotFoundError(f"{entity.title()} not found")
-        return result
+            document = await self._repository.get_document(
+                connection, kind, record_id
+            )
+        if document is None:
+            raise NotFoundError(f"{kind.title()} not found")
+        return document
 
     async def create_adjustment(
         self, store_id: UUID, actor_id: UUID, values: dict[str, Any]

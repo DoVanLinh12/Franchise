@@ -33,17 +33,14 @@ MailHog: `http://localhost:8025`.
 Kiểm tra:
 
 ```bash
-bash scripts/dev.sh db-test
-bash scripts/dev.sh coverage
-bash scripts/dev.sh postman-test
+docker compose --profile test run --rm database-test   # test SQL
+docker compose --profile test run --rm postman         # Postman/Newman
+cd src/backend && pytest --cov=app                      # unit + integration
+cd src/backend && pytest -m e2e tests/e2e               # end-to-end (hệ thống đang chạy)
 ```
 
-Jenkins local:
-
-```bash
-bash scripts/dev.sh jenkins-up
-bash scripts/dev.sh jenkins-password
-```
+CI/CD: GitHub Actions (`.github/workflows/ci.yml`) chạy lint, test, SQL test,
+Postman và đẩy image lên `ghcr.io` khi push lên `main`.
 
 Không commit `.env`. Đổi `JWT_SECRET_KEY` trong `.env` trước khi demo. Tài khoản
 seed local dùng chung mật khẩu `Admin@123`:

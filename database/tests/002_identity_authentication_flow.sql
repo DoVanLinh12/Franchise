@@ -8,9 +8,8 @@ CALL app.proc_register_user(
     '0900000001'
 );
 
-INSERT INTO app.user_roles (user_id, role_id)
-SELECT '20000000-0000-0000-0000-000000000001', id
-FROM app.roles WHERE code = 'ADMIN';
+UPDATE app.users SET roles = ARRAY['ADMIN']::varchar(30)[]
+WHERE id = '20000000-0000-0000-0000-000000000001';
 
 CALL app.proc_register_user(
     '20000000-0000-0000-0000-000000000002',

@@ -19,17 +19,14 @@ from app.api.schemas import (
     RevenueReviewRequest,
     RevenueSaveRequest,
     ReviewRequest,
-    StoreCreateRequest,
 )
 from app.domain import (
     CreateDraftContractCommand,
-    CreateStoreCommand,
     SubmitApplicationCommand,
 )
 from app.services.application_service import ApplicationService
 from app.services.contract_service import ContractService
 from app.services.operations_service import OperationsService
-from app.services.store_service import StoreService
 
 router = APIRouter(tags=["Business"])
 
@@ -115,16 +112,6 @@ async def reject_application(
         application_id, _user_id(admin), payload.reason
     )
     return Response(status_code=204)
-
-
-@router.post("/stores", response_model=IdResponse, status_code=201)
-async def create_store(
-    payload: StoreCreateRequest, admin: AdminUser
-) -> IdResponse:
-    identifier = await StoreService().create_from_application(
-        CreateStoreCommand(actor_id=_user_id(admin), **payload.model_dump())
-    )
-    return IdResponse(id=identifier)
 
 
 @router.get("/stores", response_model=PageResponse)

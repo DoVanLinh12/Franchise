@@ -165,7 +165,6 @@ cho toàn bộ bảng và các file function/procedure theo chức năng.
 ```text
 database/
 ├── schema/001_create_all_tables.sql
-├── reference-data/001_roles.sql
 ├── procedures/
 │   ├── 001_authorization.sql
 │   ├── 010_authentication.sql

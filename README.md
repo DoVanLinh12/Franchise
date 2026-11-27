@@ -15,7 +15,7 @@ Docker Desktop và Git Bash; không triển khai lên server từ xa.
 - Email test tùy chọn: MailHog
 - API test: Postman collection chạy tự động bằng Newman
 - Chất lượng: pytest, coverage, Ruff, mypy
-- Hạ tầng local: Docker Compose, Jenkins CI
+- Hạ tầng local: Docker Compose, GitHub Actions CI/CD
 
 SQLAlchemy và ORM không được sử dụng. Repository không tạo object để ORM tự sinh
 SQL; Repository gọi Stored Procedure/Function đã định nghĩa trong PostgreSQL
@@ -94,16 +94,13 @@ rows = await connection.fetch(
 |   |   |   `-- celery_app.py    # Celery tùy chọn
 |   |   |-- tests/               # Unit test và API foundation test
 |   |   `-- Dockerfile
-|-- infrastructure/jenkins/      # Jenkins chạy local
 |-- database/
-|   |-- schema/                  # Một file duy nhất tạo toàn bộ bảng
+|   |-- schema/                  # Tạo 14 bảng
 |   |-- procedures/              # Stored Procedure/Function theo chức năng
-|   |-- reference-data/          # Role hệ thống cần thiết
 |   `-- run-database-setup.sh    # Khởi tạo schema và cài procedures
 |-- postman/                     # Postman collection kiểm thử API
-|-- scripts/dev.sh
 |-- docker-compose.yml
-`-- Jenkinsfile
+`-- .github/workflows/ci.yml   # GitHub Actions CI/CD
 ```
 
 ## Chạy bằng Docker Desktop
@@ -122,8 +119,8 @@ docker compose up -d --build
 ```
 
 Lệnh trên tự build API, chờ PostgreSQL/Redis, thiết lập database, seed dữ liệu mẫu
-rồi mới khởi động API. Có thể gọi `db-setup` hoặc `db-seed` riêng khi cần kiểm
-tra thủ công; chạy lại an toàn vì cả hai đều idempotent.
+rồi mới khởi động API. Seed chỉ nạp khi database còn trống nên khởi động lại không
+làm trùng dữ liệu.
 
 - FastAPI: http://localhost:8000
 - Swagger: http://localhost:8000/docs
@@ -171,28 +168,38 @@ uvicorn app.main:app --reload
 ```bash
 cd /d/Franchise/src/backend
 ruff check .
-pytest --cov=app --cov-report=term-missing
+pytest --cov=app --cov-report=term-missing   # unit + integration test
+```
+
+### Test end-to-end toàn hệ thống
+
+`tests/e2e/test_full_system.py` gọi thật vào API đang chạy (42 ca kiểm thử, phủ đủ
+51 endpoint: đăng nhập, phân quyền, hồ sơ, cửa hàng, hợp đồng, khuyến mãi, doanh thu,
+hóa đơn, thanh toán, thông báo, cảnh báo, audit log, báo cáo, xuất file, quản trị
+user và đặt lại mật khẩu qua email). Khi API không chạy, các test này tự bỏ qua.
+
+```bash
+docker compose --profile full up -d --build      # cần Celery + MailHog cho test email
+cd src/backend
+pytest -m e2e tests/e2e -v                       # E2E_BASE_URL mặc định http://localhost:8000
 ```
 
 ## Kiểm thử API bằng Postman
 
 Collection nằm tại `postman/franchise-api.postman_collection.json`. Có thể import
 file này vào Postman để chạy thủ công với biến `baseUrl=http://localhost:8000`.
-Collection gồm 30 request, trong đó có luồng tích hợp đầy đủ từ đăng ký/đăng nhập,
+Collection gồm 29 request, trong đó có luồng tích hợp đầy đủ từ đăng ký/đăng nhập,
 Application, Store, Contract, Promotion, Revenue, Invoice, Payment đến export.
 
 Để chạy tự động bằng Newman trong Docker và tạo báo cáo JUnit:
 
 ```bash
 cd /d/Franchise
-bash scripts/dev.sh postman-test
+docker compose --profile test run --rm postman
 ```
 
-Báo cáo được lưu tại `reports/postman/postman-junit.xml`. Jenkins cũng chạy
+Báo cáo được lưu tại `reports/postman/postman-junit.xml`. GitHub Actions cũng chạy
 collection này, hiển thị kết quả test và lưu report trong artifacts của build.
-
-Kịch bản E2E thủ công theo ba vai trò, gồm dữ liệu mẫu và kết quả mong đợi, nằm
-tại `docs/E2E_TEST_SCENARIO.md`.
 
 ## Quản lý database không dùng ORM
 
@@ -200,8 +207,7 @@ Schema được quản lý bằng các file SQL có thứ tự:
 
 ```text
 database/
-|-- schema/001_create_all_tables.sql
-|-- reference-data/001_roles.sql
+|-- schema/001_create_all_tables.sql   # tạo mới 14 bảng
 `-- procedures/
     |-- 001_authorization.sql
     |-- 010_authentication.sql
@@ -216,29 +222,29 @@ database/
 
 File schema tạo các bảng/index/constraint. Mỗi file trong `procedures/` gom
 Stored Procedure/Function của một nhóm chức năng. `database-setup` chạy schema
-khi chưa có bảng, rồi nạp roles và áp dụng lại các procedure/function mỗi lần
-chạy. Compose chuyển sang volume PostgreSQL mới `franchise_postgres_v2_data`;
-volume cũ được giữ nguyên và không tự động xóa.
+khi chưa có bảng, rồi áp dụng lại các procedure/function mỗi lần chạy.
 
-Khi chỉ sửa procedure/function, chạy `bash scripts/dev.sh db-setup`. Khi thay
+Khi chỉ sửa procedure/function, chạy `docker compose run --rm database-setup`. Khi thay
 đổi cấu trúc bảng, cần tạo lại database local bằng `docker compose down -v`
 rồi `docker compose up -d --build`; lệnh `down -v` xóa dữ liệu trong volume
 đang dùng.
 
-## Jenkins local
+## CI/CD bằng GitHub Actions
 
-```bash
-bash scripts/dev.sh jenkins-up
-bash scripts/dev.sh jenkins-password
-```
+Workflow `.github/workflows/ci.yml` chạy mỗi khi push hoặc mở pull request:
 
-Jenkins chạy lint, unit test, coverage, validate Compose, build API image và chạy
-Postman API test ngay trên máy local. Không push registry và không SSH deploy.
+1. **backend**: Ruff, mypy, pytest với coverage tối thiểu 30%.
+2. **frontend**: kiểm tra cú pháp `app.js`.
+3. **integration**: build image, setup database, chạy SQL test, seed và Postman/Newman.
+4. **deploy** (chỉ khi push lên `main`): build và đẩy image `franchise-api`,
+   `franchise-frontend` lên GitHub Container Registry (`ghcr.io`).
+
+Báo cáo test và coverage được lưu ở mục Artifacts của từng lần chạy.
 
 ## Trạng thái hiện tại
 
-Repo hiện có backend/API và giao diện vận hành local, đã triển khai đủ 10 giai đoạn
-trong `docs/IMPLEMENTATION_ROADMAP.md`: Authentication/RBAC, onboarding, Contract
+Repo hiện có backend/API và giao diện vận hành local, đã triển khai đủ các nhóm chức năng:
+Authentication/RBAC, onboarding, Contract
 activation, Promotion, Revenue, Invoice/VAT/Credit, Payment/công nợ,
 Notification/Celery, import/export/report và hardening/CI. Swagger đầy đủ tại
 `http://localhost:8000/docs` sau khi chạy Docker.

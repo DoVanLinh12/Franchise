@@ -4,8 +4,10 @@
 
 ```text
 Register/Login → Submit Application → Admin Review → Approve
-→ Create Store INACTIVE → Create Contract DRAFT
-→ Record >=20% Initial Fee → Activate Contract + Store
+→ Create Contract DRAFT from the approved application
+   → Store created automatically as INACTIVE (code CHxxxx, name/address from the application,
+     owner = applicant, role STORE_OWNER)
+→ Record >=20% Initial Fee → Activate Contract → Store ACTIVE
 ```
 
 ## Revenue

@@ -13,3 +13,5 @@ pydantic-settings>=2.7,<3.0
 
 redis>=5.2,<7.0
 celery>=5.4,<6.0
+# kombu's Redis transport imports packaging without declaring it
+packaging>=24.0

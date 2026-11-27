@@ -1,38 +1,5 @@
 -- Stored procedures/functions for 010_authentication.sql.
 
--- Keep an existing local database aligned with the simplified auth scope.
-ALTER TABLE app.users
-    DROP CONSTRAINT IF EXISTS ck_users_failed_login_attempts,
-    DROP COLUMN IF EXISTS failed_login_attempts,
-    DROP COLUMN IF EXISTS locked_until;
-UPDATE app.users SET status = 'INACTIVE' WHERE status = 'LOCKED';
-ALTER TABLE app.users DROP CONSTRAINT IF EXISTS ck_users_status;
-ALTER TABLE app.users ADD CONSTRAINT ck_users_status
-    CHECK (status IN ('ACTIVE', 'INACTIVE'));
-DROP TABLE IF EXISTS app.refresh_tokens;
-DROP PROCEDURE IF EXISTS app.proc_record_login_failure(text, integer, integer);
-DO $$
-DECLARE
-    old_routine record;
-BEGIN
-    FOR old_routine IN
-        SELECT p.oid::regprocedure AS signature
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'app'
-          AND p.prokind = 'p'
-          AND p.proname IN (
-              'proc_store_refresh_token',
-              'proc_rotate_refresh_token',
-              'proc_revoke_refresh_token'
-          )
-    LOOP
-        EXECUTE 'DROP PROCEDURE ' || old_routine.signature;
-    END LOOP;
-END;
-$$;
-DROP FUNCTION IF EXISTS app.fn_get_user_auth_by_email(text);
-
 CREATE OR REPLACE PROCEDURE app.proc_register_user(
     p_user_id uuid,
     p_email text,
@@ -125,10 +92,10 @@ RETURNS TABLE (code varchar)
 LANGUAGE sql
 STABLE
 AS $$
-    SELECT r.code
-    FROM app.user_roles ur
-    JOIN app.roles r ON r.id = ur.role_id
-    WHERE ur.user_id = p_user_id
+    SELECT r.code::varchar
+    FROM app.users u
+    CROSS JOIN LATERAL unnest(u.roles) AS r(code)
+    WHERE u.id = p_user_id
     ORDER BY r.code;
 $$;
 
@@ -175,17 +142,14 @@ CREATE OR REPLACE PROCEDURE app.proc_create_password_reset_token(
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    -- p_token_id and p_ip_address are kept for API compatibility; one active
+    -- token per user is stored on app.users and replaces any previous token.
     PERFORM app.assert_active_user(p_user_id);
-
-    UPDATE app.password_reset_tokens
-    SET used_at = now()
-    WHERE user_id = p_user_id
-      AND used_at IS NULL;
-
-    INSERT INTO app.password_reset_tokens (
-        id, user_id, token_hash, expires_at, requested_by_ip
-    )
-    VALUES (p_token_id, p_user_id, p_token_hash, p_expires_at, p_ip_address);
+    UPDATE app.users
+    SET reset_token_hash = p_token_hash,
+        reset_token_expires_at = p_expires_at,
+        updated_at = now()
+    WHERE id = p_user_id;
 END;
 $$;
 
@@ -196,34 +160,31 @@ CREATE OR REPLACE PROCEDURE app.proc_reset_password(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_token app.password_reset_tokens%ROWTYPE;
+    v_user app.users%ROWTYPE;
 BEGIN
-    SELECT * INTO v_token
-    FROM app.password_reset_tokens
-    WHERE token_hash = p_token_hash
+    SELECT * INTO v_user
+    FROM app.users
+    WHERE reset_token_hash = p_token_hash
     FOR UPDATE;
 
     IF NOT FOUND
-       OR v_token.used_at IS NOT NULL
-       OR v_token.expires_at <= now()
-       OR NOT app.is_active_user(v_token.user_id) THEN
+       OR v_user.reset_token_expires_at <= now()
+       OR NOT app.is_active_user(v_user.id) THEN
         RAISE EXCEPTION 'PASSWORD_RESET_TOKEN_INVALID';
     END IF;
-
-    UPDATE app.password_reset_tokens
-    SET used_at = now()
-    WHERE id = v_token.id;
 
     UPDATE app.users
     SET password_hash = p_new_password_hash,
         password_changed_at = now(),
+        reset_token_hash = NULL,
+        reset_token_expires_at = NULL,
         updated_at = now()
-    WHERE id = v_token.user_id;
+    WHERE id = v_user.id;
 
     INSERT INTO app.audit_logs (
         actor_id, action, entity_type, entity_id
     )
-    VALUES (v_token.user_id, 'PASSWORD_RESET', 'USER', v_token.user_id);
+    VALUES (v_user.id, 'PASSWORD_RESET', 'USER', v_user.id);
 END;
 $$;
 
@@ -258,10 +219,8 @@ BEGIN
        AND p_new_status <> 'ACTIVE'
        AND app.user_has_role(p_user_id, 'ADMIN') THEN
         SELECT count(*) INTO v_active_admin_count
-        FROM app.user_roles ur
-        JOIN app.roles r ON r.id = ur.role_id
-        JOIN app.users u ON u.id = ur.user_id
-        WHERE r.code = 'ADMIN'
+        FROM app.users u
+        WHERE 'ADMIN' = ANY (u.roles)
           AND u.status = 'ACTIVE'
           AND u.deleted_at IS NULL;
         IF v_active_admin_count <= 1 THEN
@@ -295,23 +254,23 @@ CREATE OR REPLACE PROCEDURE app.proc_assign_user_role(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_role_id smallint;
+    v_role text := upper(btrim(p_role_code));
 BEGIN
     PERFORM app.assert_role(p_actor_id, 'ADMIN');
     PERFORM app.assert_active_user(p_user_id);
-    SELECT id INTO v_role_id FROM app.roles WHERE code = upper(btrim(p_role_code));
-    IF NOT FOUND THEN
+    IF v_role NOT IN ('ADMIN', 'STORE_OWNER', 'ACCOUNTANT') THEN
         RAISE EXCEPTION 'ROLE_NOT_FOUND';
     END IF;
     IF EXISTS (
-        SELECT 1 FROM app.user_roles
-        WHERE user_id = p_user_id AND role_id = v_role_id
+        SELECT 1 FROM app.users
+        WHERE id = p_user_id AND v_role = ANY (roles)
     ) THEN
         RAISE EXCEPTION 'ROLE_ALREADY_ASSIGNED';
     END IF;
 
-    INSERT INTO app.user_roles (user_id, role_id)
-    VALUES (p_user_id, v_role_id);
+    UPDATE app.users
+    SET roles = array_append(roles, v_role::varchar), updated_at = now()
+    WHERE id = p_user_id;
     INSERT INTO app.audit_logs (
         actor_id, action, entity_type, entity_id, new_values
     ) VALUES (
@@ -329,20 +288,17 @@ CREATE OR REPLACE PROCEDURE app.proc_remove_user_role(
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_role_id smallint;
+    v_role text := upper(btrim(p_role_code));
     v_active_admin_count integer;
 BEGIN
     PERFORM app.assert_role(p_actor_id, 'ADMIN');
-    SELECT id INTO v_role_id FROM app.roles WHERE code = upper(btrim(p_role_code));
-    IF NOT FOUND THEN
+    IF v_role NOT IN ('ADMIN', 'STORE_OWNER', 'ACCOUNTANT') THEN
         RAISE EXCEPTION 'ROLE_NOT_FOUND';
     END IF;
-    IF upper(btrim(p_role_code)) = 'ADMIN' THEN
+    IF v_role = 'ADMIN' THEN
         SELECT count(*) INTO v_active_admin_count
-        FROM app.user_roles ur
-        JOIN app.roles r ON r.id = ur.role_id
-        JOIN app.users u ON u.id = ur.user_id
-        WHERE r.code = 'ADMIN'
+        FROM app.users u
+        WHERE 'ADMIN' = ANY (u.roles)
           AND u.status = 'ACTIVE'
           AND u.deleted_at IS NULL;
         IF app.user_has_role(p_user_id, 'ADMIN')
@@ -351,8 +307,9 @@ BEGIN
         END IF;
     END IF;
 
-    DELETE FROM app.user_roles
-    WHERE user_id = p_user_id AND role_id = v_role_id;
+    UPDATE app.users
+    SET roles = array_remove(roles, v_role::varchar), updated_at = now()
+    WHERE id = p_user_id AND v_role = ANY (roles);
     IF NOT FOUND THEN
         RAISE EXCEPTION 'ROLE_NOT_ASSIGNED';
     END IF;

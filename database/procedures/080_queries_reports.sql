@@ -36,12 +36,14 @@ BEGIN
         ORDER BY x.created_at DESC LIMIT p_page_size OFFSET p_offset;
     ELSIF p_entity = 'contracts' THEN
         RETURN QUERY SELECT to_jsonb(x), count(*) OVER () FROM app.contracts x
-        JOIN app.stores s ON s.id = x.store_id
+        JOIN app.franchise_applications a ON a.id = x.application_id
         WHERE (app.user_has_role(p_user_id, 'ADMIN')
                OR app.user_has_role(p_user_id, 'ACCOUNTANT')
-               OR s.owner_id = p_user_id)
+               OR a.applicant_id = p_user_id)
           AND (p_status IS NULL OR x.status = upper(p_status))
-          AND (p_search IS NULL OR x.contract_no ILIKE '%' || p_search || '%')
+          AND (p_search IS NULL OR x.contract_no ILIKE '%' || p_search || '%'
+               OR x.store_name ILIKE '%' || p_search || '%'
+               OR x.store_code ILIKE '%' || p_search || '%')
         ORDER BY x.created_at DESC LIMIT p_page_size OFFSET p_offset;
     ELSIF p_entity = 'promotions' THEN
         RETURN QUERY SELECT to_jsonb(x), count(*) OVER () FROM app.promotions x
@@ -103,8 +105,8 @@ RETURNS TABLE (
 LANGUAGE sql STABLE AS $$
     SELECT s.id, s.code, s.name,
         coalesce(sum(i.monthly_gross_revenue), 0),
-        coalesce(sum(mc.monthly_promotion_discount), 0),
-        coalesce(sum(mc.monthly_net_revenue), 0),
+        coalesce(sum(i.monthly_promotion_discount), 0),
+        coalesce(sum(i.monthly_net_revenue), 0),
         coalesce(sum(i.royalty_fee), 0),
         coalesce(sum(i.brand_promotion_support), 0),
         coalesce(sum(i.invoice_total), 0),
@@ -115,11 +117,52 @@ LANGUAGE sql STABLE AS $$
         AND i.period_month BETWEEN date_trunc('month', p_period_from)::date
         AND date_trunc('month', p_period_to)::date
         AND i.status <> 'CANCELLED'
-    LEFT JOIN app.monthly_closes mc ON mc.id = i.monthly_close_id
     WHERE s.deleted_at IS NULL AND (
         app.user_has_role(p_user_id, 'ADMIN')
         OR app.user_has_role(p_user_id, 'ACCOUNTANT')
         OR s.owner_id = p_user_id
     )
     GROUP BY s.id, s.code, s.name ORDER BY s.code;
+$$;
+
+-- Data for the printable franchise contract (PDF).
+CREATE OR REPLACE FUNCTION app.fn_contract_document(p_contract_id uuid)
+RETURNS jsonb
+LANGUAGE sql STABLE AS $$
+    SELECT to_jsonb(c) || jsonb_build_object(
+        'owner_name', u.full_name, 'owner_email', u.email, 'owner_phone', u.phone,
+        'initial_fee_paid', coalesce((
+            SELECT sum(amount) FROM app.contract_financial_transactions t
+            WHERE t.contract_id = c.id AND t.transaction_type = 'INITIAL_FEE_PAYMENT'), 0),
+        'deposit_paid', coalesce((
+            SELECT sum(amount) FROM app.contract_financial_transactions t
+            WHERE t.contract_id = c.id AND t.transaction_type = 'DEPOSIT_PAYMENT'), 0)
+    )
+    FROM app.contracts c
+    JOIN app.franchise_applications fa ON fa.id = c.application_id
+    JOIN app.users u ON u.id = fa.applicant_id
+    WHERE c.id = p_contract_id;
+$$;
+
+-- Data for the printable monthly franchise fee statement (PDF).
+CREATE OR REPLACE FUNCTION app.fn_invoice_document(p_invoice_id uuid)
+RETURNS jsonb
+LANGUAGE sql STABLE AS $$
+    SELECT to_jsonb(i) || jsonb_build_object(
+        'store_code', s.code, 'store_name', s.name, 'store_address', s.address,
+        'store_phone', s.phone, 'store_email', s.email,
+        'owner_name', u.full_name, 'owner_email', u.email, 'owner_phone', u.phone,
+        'contract_no', c.contract_no,
+        'payments', coalesce((
+            SELECT jsonb_agg(jsonb_build_object(
+                'payment_no', p.payment_no, 'payment_date', p.payment_date,
+                'amount', p.amount, 'method', p.method, 'status', p.status,
+                'reference_no', p.reference_no) ORDER BY p.payment_date, p.payment_no)
+            FROM app.payments p WHERE p.invoice_id = i.id), '[]'::jsonb)
+    )
+    FROM app.invoices i
+    JOIN app.stores s ON s.id = i.store_id
+    JOIN app.users u ON u.id = s.owner_id
+    JOIN app.contracts c ON c.id = i.contract_id
+    WHERE i.id = p_invoice_id;
 $$;

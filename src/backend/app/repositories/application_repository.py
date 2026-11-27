@@ -1,5 +1,4 @@
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -90,13 +89,3 @@ class ApplicationRepository:
             review_note,
         )
 
-    async def get_by_id(
-        self,
-        connection: asyncpg.Connection,
-        application_id: UUID,
-    ) -> dict[str, Any] | None:
-        row = await connection.fetchrow(
-            "SELECT * FROM app.fn_get_franchise_application($1)",
-            application_id,
-        )
-        return dict(row) if row is not None else None

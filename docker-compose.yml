@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: franchise-postgres
+    # Business dates (revenue day, overdue alerts) follow Vietnam time.
+    command: ["postgres", "-c", "timezone=Asia/Ho_Chi_Minh"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-franchise}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-franchise}
@@ -37,8 +39,6 @@ services:
     container_name: franchise-api
     environment:
       APP_NAME: Franchise Management API
-      ENVIRONMENT: development
-      APP_DEBUG: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-this-secret-before-sharing}
@@ -69,22 +69,6 @@ services:
       api:
         condition: service_healthy
 
-  backend-test:
-    image: franchise-api-test
-    profiles: ["test"]
-    build:
-      context: ./src/backend
-      target: test
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise}:${POSTGRES_PASSWORD:-franchise}@postgres:5432/${POSTGRES_DB:-franchise}
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-local-development-only-change-this-secret-before-sharing}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   database-setup:
     image: postgres:16-alpine
     environment:
@@ -92,7 +76,6 @@ services:
     volumes:
       - ./database/schema:/schema:ro
       - ./database/procedures:/procedures:ro
-      - ./database/reference-data:/reference-data:ro
       - ./database/run-database-setup.sh:/database/run-database-setup.sh:ro
     entrypoint: ["/bin/sh", "/database/run-database-setup.sh"]
     depends_on:

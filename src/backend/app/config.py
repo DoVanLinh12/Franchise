@@ -5,8 +5,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_NAME: str = "Franchise Management API"
-    ENVIRONMENT: str = "development"
-    APP_DEBUG: bool = False
     DATABASE_URL: str = (
         "postgresql://postgres:postgres@localhost:5432/franchise"
     )

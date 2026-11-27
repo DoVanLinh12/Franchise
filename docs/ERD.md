@@ -1,114 +1,82 @@
-# ERD hiện tại
+# ERD
 
-ERD này chỉ phản ánh phần backend đã triển khai, không mô tả trước Revenue,
-Promotion, Invoice hoặc Payment.
+Cơ sở dữ liệu gồm 14 bảng trong schema `app`
+(`database/schema/001_create_all_tables.sql`), rút gọn từ 21 bảng ở bản thiết kế đầu.
 
 ```mermaid
 erDiagram
-    USERS ||--o{ USER_ROLES : has
-    USERS ||--o{ PASSWORD_RESET_TOKENS : requests
-    ROLES ||--o{ USER_ROLES : assigned
     USERS ||--o{ FRANCHISE_APPLICATIONS : submits
     FRANCHISE_APPLICATIONS ||--o| STORES : creates
     USERS ||--o{ STORES : owns
     STORES ||--o{ CONTRACTS : has
+    FRANCHISE_APPLICATIONS ||--o{ CONTRACTS : contracted
+    CONTRACTS ||--o{ CONTRACT_FINANCIAL_TRANSACTIONS : receives
+    PROMOTIONS ||--o{ PROMOTION_STORES : scopes
+    STORES ||--o{ PROMOTION_STORES : selected
+    STORES ||--o{ REVENUES : reports
+    REVENUES ||--o{ REVENUE_PROMOTION_DETAILS : contains
+    PROMOTIONS ||--o{ REVENUE_PROMOTION_DETAILS : snapshots
+    STORES ||--o{ INVOICES : billed
+    CONTRACTS ||--o{ INVOICES : prices
+    INVOICES ||--o{ PAYMENTS : receives
+    STORES ||--o{ BILLING_ADJUSTMENTS : carries
+    INVOICES ||--o{ BILLING_ADJUSTMENTS : applies
+    USERS ||--o{ NOTIFICATIONS : receives
     USERS ||--o{ AUDIT_LOGS : acts
 
     USERS {
         uuid id PK
         varchar email UK
         text password_hash
-        varchar full_name
+        varchar_array roles "ADMIN, STORE_OWNER, ACCOUNTANT"
+        char reset_token_hash UK "SHA-256, dùng một lần"
+        timestamptz reset_token_expires_at
         varchar status
-        timestamptz last_login_at
-        timestamptz password_changed_at
-        timestamptz deleted_at
     }
-
-    ROLES {
-        smallint id PK
-        varchar code UK
-        varchar name
-    }
-
-    USER_ROLES {
-        uuid user_id PK,FK
-        smallint role_id PK,FK
-    }
-
-    PASSWORD_RESET_TOKENS {
-        uuid id PK
-        uuid user_id FK
-        char token_hash UK
-        timestamptz expires_at
-        timestamptz used_at
-    }
-
     FRANCHISE_APPLICATIONS {
         uuid id PK
         uuid applicant_id FK
+        varchar proposed_store_name
         varchar status
-        uuid reviewed_by FK
-        timestamptz converted_at
-        timestamptz deleted_at
     }
-
     STORES {
         uuid id PK
-        varchar code UK
+        uuid application_id FK
         uuid owner_id FK
-        uuid application_id UK,FK
+        varchar code UK
         varchar status
-        timestamptz deleted_at
+        timestamptz activated_at
     }
-
     CONTRACTS {
         uuid id PK
-        varchar contract_no UK
-        uuid store_id FK
+        uuid application_id FK
+        uuid store_id FK "cửa hàng tạo tự động khi lập hợp đồng"
+        varchar store_code "mã tự sinh CHxxxx"
+        varchar store_name
+        text store_address
         numeric royalty_rate
         numeric initial_franchise_fee
-        numeric deposit_amount
         numeric system_fee
         numeric service_fee
         varchar status
     }
-
-    AUDIT_LOGS {
-        bigint id PK
-        uuid actor_id FK
-        varchar action
-        varchar entity_type
-        uuid entity_id
-        jsonb old_values
-        jsonb new_values
+    CONTRACT_FINANCIAL_TRANSACTIONS {
+        uuid id PK
+        uuid contract_id FK
+        varchar transaction_type "INITIAL_FEE_PAYMENT, DEPOSIT_PAYMENT"
+        numeric amount
     }
-```
-
-Nguồn chính thức duy nhất để tạo bảng/index/constraint là
-`database/schema/001_create_all_tables.sql`. Procedures và functions được
-nhóm theo chức năng trong `database/procedures/`.
-
-## Billing và vận hành
-
-```mermaid
-erDiagram
-    STORES ||--o{ CONTRACTS : has
-    CONTRACTS ||--o{ CONTRACT_FINANCIAL_TRANSACTIONS : receives
-    STORES ||--o{ REVENUES : reports
-    REVENUES ||--o{ REVENUE_PROMOTION_DETAILS : contains
-    REVENUES ||--o{ REVENUE_VERSIONS : versions
-    PROMOTIONS ||--o{ REVENUE_PROMOTION_DETAILS : snapshots
-    PROMOTIONS ||--o{ PROMOTION_STORES : scopes
-    STORES ||--o{ PROMOTION_STORES : selected
-    STORES ||--o{ MONTHLY_CLOSES : closes
-    MONTHLY_CLOSES ||--|| INVOICES : produces
-    INVOICES ||--o{ INVOICE_ITEMS : snapshots
-    INVOICES ||--o{ PAYMENTS : receives
-    STORES ||--o{ BILLING_ADJUSTMENTS : carries
-    STORES ||--o{ STORE_CREDITS : owns
-    USERS ||--o{ NOTIFICATIONS : receives
-
+    PROMOTIONS {
+        uuid id PK
+        varchar discount_type
+        numeric discount_value
+        varchar scope "thương hiệu chịu 100% chi phí"
+        varchar status
+    }
+    PROMOTION_STORES {
+        uuid promotion_id PK
+        uuid store_id PK
+    }
     REVENUES {
         uuid id PK
         uuid store_id FK
@@ -117,22 +85,25 @@ erDiagram
         numeric promotion_discount
         numeric net_revenue
         varchar status
-        integer version
+        integer version "phiên bản cũ lưu ở audit_logs"
     }
-    PROMOTIONS {
+    REVENUE_PROMOTION_DETAILS {
         uuid id PK
-        varchar scope
-        varchar funding_type
-        numeric brand_share_percent
-        numeric store_share_percent
-        varchar status
+        uuid revenue_id FK
+        uuid promotion_id FK
+        numeric discount_amount "thương hiệu hỗ trợ toàn bộ"
     }
     INVOICES {
         uuid id PK
         uuid store_id FK
+        uuid contract_id FK
         date period_month
-        numeric taxable_amount
-        numeric vat_rate
+        numeric monthly_gross_revenue
+        numeric monthly_promotion_discount
+        numeric monthly_net_revenue
+        numeric royalty_fee
+        numeric brand_promotion_support
+        numeric carried_credit
         numeric vat_amount
         numeric invoice_total
         numeric outstanding_amount
@@ -142,6 +113,39 @@ erDiagram
         uuid id PK
         uuid invoice_id FK
         numeric amount
-        varchar status
+        varchar status "CONFIRMED, REVERSED"
+    }
+    BILLING_ADJUSTMENTS {
+        uuid id PK
+        uuid store_id FK
+        varchar adjustment_type "ADJUSTMENT, CREDIT"
+        numeric amount
+        varchar status "PENDING, APPLIED"
+        uuid applied_invoice_id FK
+        uuid source_invoice_id FK
+    }
+    NOTIFICATIONS {
+        uuid id PK
+        uuid user_id FK
+        varchar notification_type
+        timestamptz read_at
+    }
+    AUDIT_LOGS {
+        bigint id PK
+        uuid actor_id FK
+        varchar action "kể cả REVENUE_VERSION"
+        jsonb old_values
+        jsonb new_values
     }
 ```
+
+## Các bảng đã gộp
+
+| Bảng cũ | Nay nằm ở |
+|---|---|
+| `roles`, `user_roles` | `users.roles` (mảng, CHECK chỉ nhận 3 vai trò) |
+| `password_reset_tokens` | `users.reset_token_hash`, `users.reset_token_expires_at` |
+| `monthly_closes` | các cột tổng tháng trong `invoices` |
+| `invoice_items` | tính từ các cột phí của `invoices` (`fn_get_invoice` trả về `items`) |
+| `revenue_versions` | `audit_logs` với `action = 'REVENUE_VERSION'`, bản cũ trong `old_values` |
+| `store_credits` | `billing_adjustments` với `adjustment_type = 'CREDIT'` (số tiền âm) |

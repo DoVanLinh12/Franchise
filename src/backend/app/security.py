@@ -75,7 +75,6 @@ class JwtService:
             access_token=access_token,
             token_type="bearer",
             access_expires_at=access_expires_at,
-            access_token_id=access_id,
         )
 
     def decode_access_token(self, token: str) -> TokenClaims:

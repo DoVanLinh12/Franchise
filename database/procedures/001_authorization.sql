@@ -24,11 +24,9 @@ STABLE
 AS $$
     SELECT EXISTS (
         SELECT 1
-        FROM app.user_roles ur
-        JOIN app.roles r ON r.id = ur.role_id
-        JOIN app.users u ON u.id = ur.user_id
-        WHERE ur.user_id = p_user_id
-          AND r.code = p_role_code
+        FROM app.users u
+        WHERE u.id = p_user_id
+          AND p_role_code = ANY (u.roles)
           AND u.status = 'ACTIVE'
           AND u.deleted_at IS NULL
     );

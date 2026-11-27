@@ -18,8 +18,6 @@ DECLARE
     v_promotion app.promotions%ROWTYPE;
     v_discount numeric;
     v_total_discount numeric := 0;
-    v_brand_support numeric;
-    v_store_cost numeric;
     v_is_existing boolean := false;
 BEGIN
     PERFORM app.assert_role(p_actor_id, 'STORE_OWNER');
@@ -80,12 +78,14 @@ BEGIN
             v_total_discount, p_actor_id, nullif(btrim(p_note), '')
         );
     ELSE
-        INSERT INTO app.revenue_versions (
-            revenue_id, version, snapshot, change_reason, changed_by
+        -- Revenue history: the version being replaced is kept in audit_logs.
+        INSERT INTO app.audit_logs (
+            actor_id, action, entity_type, entity_id, old_values, reason
         ) VALUES (
-            v_revenue.id, v_revenue.version, to_jsonb(v_revenue),
-            coalesce(v_revenue.adjustment_reason, 'OWNER_EDIT'), p_actor_id
-        ) ON CONFLICT DO NOTHING;
+            p_actor_id, 'REVENUE_VERSION', 'REVENUE', v_revenue.id,
+            to_jsonb(v_revenue),
+            coalesce(v_revenue.adjustment_reason, 'OWNER_EDIT')
+        );
         UPDATE app.revenues
         SET gross_revenue = p_gross_revenue,
             promotion_discount = v_total_discount,
@@ -103,19 +103,12 @@ BEGIN
         v_discount := (v_detail->>'discount_amount')::numeric;
         SELECT * INTO v_promotion FROM app.promotions
         WHERE id = (v_detail->>'promotion_id')::uuid;
-        v_brand_support := round(
-            v_discount * v_promotion.brand_share_percent / 100
-        );
-        v_store_cost := v_discount - v_brand_support;
         INSERT INTO app.revenue_promotion_details (
             id, revenue_id, promotion_id, discount_amount,
-            brand_share_percent, store_share_percent,
-            brand_support_amount, store_cost_amount,
             promotion_name_snapshot
         ) VALUES (
             gen_random_uuid(), p_revenue_id, v_promotion.id, v_discount,
-            v_promotion.brand_share_percent, v_promotion.store_share_percent,
-            v_brand_support, v_store_cost, v_promotion.name
+            v_promotion.name
         );
     END LOOP;
 END;
@@ -195,7 +188,7 @@ BEGIN
             entity_type, entity_id, dedupe_key
         ) VALUES (
             gen_random_uuid(), v_revenue.reported_by, 'REVENUE_REJECTED',
-            'Revenue rejected', coalesce(p_note, 'Revenue requires correction'),
+            'Doanh thu bị từ chối', coalesce(p_note, 'Doanh thu cần chỉnh sửa'),
             'REVENUE', p_revenue_id,
             'REVENUE_REJECTED:' || p_revenue_id || ':' || v_revenue.version
         ) ON CONFLICT (dedupe_key) DO NOTHING;
@@ -220,12 +213,12 @@ BEGIN
     IF v_revenue.status <> 'APPROVED' THEN
         RAISE EXCEPTION 'REVENUE_MUST_BE_APPROVED';
     END IF;
-    INSERT INTO app.revenue_versions (
-        revenue_id, version, snapshot, change_reason, changed_by
+    INSERT INTO app.audit_logs (
+        actor_id, action, entity_type, entity_id, old_values, reason
     ) VALUES (
-        p_revenue_id, v_revenue.version, to_jsonb(v_revenue),
-        btrim(p_reason), p_actor_id
-    ) ON CONFLICT DO NOTHING;
+        p_actor_id, 'REVENUE_VERSION', 'REVENUE', p_revenue_id,
+        to_jsonb(v_revenue), btrim(p_reason)
+    );
     UPDATE app.revenues SET status = 'ADJUSTMENT_REQUESTED',
         adjustment_requested_by = p_actor_id,
         adjustment_requested_at = now(), adjustment_reason = btrim(p_reason),
@@ -241,7 +234,7 @@ BEGIN
         entity_type, entity_id, dedupe_key
     ) VALUES (
         gen_random_uuid(), v_revenue.reported_by,
-        'REVENUE_ADJUSTMENT_REQUESTED', 'Revenue adjustment requested',
+        'REVENUE_ADJUSTMENT_REQUESTED', 'Yêu cầu điều chỉnh doanh thu',
         btrim(p_reason), 'REVENUE', p_revenue_id,
         'REVENUE_ADJUST:' || p_revenue_id || ':' || v_revenue.version
     ) ON CONFLICT (dedupe_key) DO NOTHING;

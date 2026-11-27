@@ -15,8 +15,8 @@ Hệ thống phục vụ phía **Brand/Franchisor** để quản lý vòng đờ
 - đăng ký tài khoản;
 - nộp hồ sơ xin nhượng quyền;
 - xét duyệt hồ sơ;
-- tạo cửa hàng sau khi hồ sơ được duyệt;
-- quản lý hợp đồng nhượng quyền;
+- lập hợp đồng nhượng quyền từ hồ sơ đã duyệt (cửa hàng được tạo tự động);
+- kích hoạt hợp đồng để cửa hàng bắt đầu hoạt động;
 - báo cáo doanh thu hằng ngày;
 - duyệt và điều chỉnh doanh thu;
 - tự động tổng hợp doanh thu theo tháng;
@@ -40,8 +40,8 @@ User đăng ký tài khoản
 → Gửi Franchise Application
 → Admin xét duyệt
 → APPROVED
-→ Tạo Store
-→ Tạo/Kích hoạt Contract
+→ Lập Contract từ Application (DRAFT) → hệ thống tự tạo Store INACTIVE
+→ Thu ≥ 20% phí ban đầu → Kích hoạt Contract
 → Store ACTIVE
 → Báo Revenue hằng ngày
 → Accountant duyệt Revenue
@@ -96,8 +96,7 @@ Admin phụ trách:
 
 - xem toàn bộ dữ liệu trong hệ thống;
 - xét duyệt Franchise Application;
-- tạo Store từ Application đã được duyệt;
-- quản lý Contract;
+- lập và kích hoạt Contract từ Application đã được duyệt (Store được tạo tự động khi lập Contract);
 - tạo và quản lý Promotion;
 - quản lý User/RBAC;
 - xem báo cáo toàn hệ thống;
@@ -241,7 +240,7 @@ PENDING / UNDER_REVIEW
 - `REJECTED` nên bắt buộc có lý do.
 - `WITHDRAWN` không bị xóa khỏi lịch sử.
 - Application đã `REJECTED` không sinh Store.
-- Application đã `APPROVED` mới được dùng để tạo Store.
+- Application đã `APPROVED` mới được dùng để lập Contract; Store được tạo tự động ngay khi lập Contract.
 - Một Application chỉ được sinh tối đa một Store.
 
 ## 5.5 Một User được có bao nhiêu Application đang mở?
@@ -255,7 +254,7 @@ Hồ sơ chưa kết thúc gồm:
 ```text
 PENDING
 UNDER_REVIEW
-APPROVED nhưng chưa tạo Store
+APPROVED nhưng chưa mở Store
 ```
 
 Nếu hồ sơ cũ đã:
@@ -285,41 +284,30 @@ Trùng địa chỉ chỉ là tín hiệu để Admin kiểm tra thêm.
 
 ## 6.1 Điều kiện
 
-Store chỉ được tạo từ:
-
-```text
-Application.status = APPROVED
-```
-
-Approve Application **không tự động sinh Store**.
-
-Luồng:
+Store **được tạo tự động khi lập Contract** từ Application đã duyệt. Admin không
+phải nhập thông tin cửa hàng:
 
 ```text
 Application APPROVED
-→ Admin kiểm tra thông tin cuối cùng
-→ Tạo Store
-→ Store INACTIVE
+→ Admin lập Contract (DRAFT)
+→ Hệ thống tạo Store INACTIVE:
+     mã tự sinh CH0001, CH0002, ...
+     tên, địa chỉ = tên, địa chỉ đề xuất trên hồ sơ
+     điện thoại, email = của người nộp hồ sơ
+     Owner = người nộp hồ sơ, gán vai trò STORE_OWNER
+→ Thu ≥ 20% phí nhượng quyền ban đầu → kích hoạt Contract
+→ Store ACTIVE (bắt đầu báo doanh thu)
 ```
 
-## 6.2 Lý do không tự sinh Store
+## 6.2 Vì sao tạo Store ngay khi ký hợp đồng
 
-Thông tin trên Application có thể chỉ là thông tin đề xuất:
+Khi hợp đồng đã ký, cửa hàng đã tồn tại về mặt pháp lý dù có thể vẫn đang thi
+công, chưa khai trương. Store ở trạng thái `INACTIVE` cho phép theo dõi cửa hàng
+đang chuẩn bị; chủ cửa hàng thấy cửa hàng của mình nhưng chưa báo được doanh thu
+cho tới khi hợp đồng được kích hoạt.
 
-```text
-Tên dự kiến
-Địa chỉ dự kiến
-Khu vực dự kiến
-```
-
-Trong khi Store chính thức cần:
-
-```text
-Mã Store
-Tên Store chính thức
-Địa chỉ chính thức
-Owner chính thức
-```
+- Mỗi Application chỉ có tối đa một Contract đang mở (DRAFT hoặc ACTIVE).
+- Mã cửa hàng do hệ thống sinh, luôn duy nhất.
 
 ## 6.3 Trạng thái Store
 
@@ -413,23 +401,16 @@ CANCELLED
 
 ## 7.3 Activation
 
-Store mới tạo có trạng thái:
-
-```text
-INACTIVE
-```
-
-Khi Contract đủ điều kiện và được kích hoạt:
+Contract được lập ở trạng thái `DRAFT`, cùng lúc Store được tạo ở trạng thái
+`INACTIVE`. Khi Contract có ngày ký và tổng `INITIAL_FEE_PAYMENT` đạt tối thiểu
+20% phí nhượng quyền ban đầu, Admin kích hoạt:
 
 ```text
 Contract = ACTIVE
+Store    = ACTIVE (activated_at = thời điểm kích hoạt)
 ```
 
-thì Store mới được chuyển:
-
-```text
-Store = ACTIVE
-```
+Ngày kích hoạt là mốc sớm nhất cửa hàng được báo doanh thu.
 
 Chi tiết gia hạn/chấm dứt/thay đổi điều khoản vẫn để thảo luận sau.
 
@@ -853,10 +834,6 @@ end_date
 
 scope
 
-funding_type
-brand_share_percent
-store_share_percent
-
 status
 
 created_by
@@ -899,139 +876,39 @@ Promotion chỉ được áp dụng nếu:
 
 ---
 
-# 16. Funding của Promotion
+# 16. Chi phí Promotion
 
-Có ba loại:
-
-```text
-BRAND
-STORE
-SHARED
-```
-
-## 16.1 BRAND
-
-```text
-Brand chịu 100%
-Store chịu 0%
-```
-
-## 16.2 STORE
-
-```text
-Brand chịu 0%
-Store chịu 100%
-```
-
-## 16.3 SHARED
-
-```text
-brand_share_percent
-+
-store_share_percent
-=
-100
-```
+**Thương hiệu chịu 100% chi phí của mọi Promotion.** Cửa hàng không chịu phần nào, nên không có loại funding hay tỷ lệ chia chi phí.
 
 Ví dụ:
 
 ```text
 Discount = 20 triệu
-Brand = 60%
-Store = 40%
-
-Brand Support = 12 triệu
-Store Cost = 8 triệu
+Brand Support = 20 triệu
+Store Cost = 0
 ```
 
 ---
 
 # 17. Promotion chi tiết theo Revenue
 
-Vì một ngày có thể có nhiều Promotion, mỗi Revenue phải phân biệt phần discount của từng Promotion.
-
-Ví dụ:
+Một ngày có thể có nhiều Promotion. Mỗi Revenue lưu số discount của từng Promotion (kèm tên Promotion tại thời điểm áp dụng).
 
 ```text
 Gross Revenue ngày = 100 triệu
+Promotion A: discount = 10 triệu
+Promotion B: discount = 5 triệu
+
+promotion_discount = 15 triệu
+Net Revenue        = 100 - 15 = 85 triệu
+Brand Support      = 15 triệu (toàn bộ discount)
 ```
 
-Promotion A:
-
-```text
-Discount = 10 triệu
-Brand chịu = 80%
-Store chịu = 20%
-```
-
-Promotion B:
-
-```text
-Discount = 5 triệu
-Brand chịu = 40%
-Store chịu = 60%
-```
-
-Tổng:
-
-```text
-promotion_discount
-= 10 + 5
-= 15 triệu
-```
-
-Net Revenue:
-
-```text
-100 - 15
-= 85 triệu
-```
-
-Brand Support:
-
-```text
-10 × 80%
-+
-5 × 40%
-=
-10 triệu
-```
-
-Store Promotion Cost:
-
-```text
-10 × 20%
-+
-5 × 60%
-=
-5 triệu
-```
-
-Royalty vẫn tính:
+Royalty vẫn tính trên Gross Revenue:
 
 ```text
 100 triệu × royalty_rate
 ```
-
-## 17.1 Snapshot Funding
-
-Tỷ lệ Brand/Store chịu tại thời điểm Promotion được áp dụng phải được giữ lại cho lịch sử.
-
-Ví dụ tháng 9 Promotion A:
-
-```text
-Brand = 80%
-Store = 20%
-```
-
-Tháng 10 Admin thay đổi Promotion thành:
-
-```text
-Brand = 50%
-Store = 50%
-```
-
-Revenue và Invoice tháng 9 vẫn phải giữ tỷ lệ 80/20 cũ.
 
 ---
 
@@ -1042,7 +919,7 @@ Phần Brand chịu được dùng để giảm nghĩa vụ Invoice của Store.
 ```text
 brand_promotion_support
 =
-SUM(discount_amount × brand_share_percent)
+SUM(discount_amount)
 ```
 
 Brand Support được:
@@ -2077,10 +1954,10 @@ Không làm tròn Royalty từng ngày rồi cộng lại.
 
 5. Admin APPROVE.
 
-6. Admin tạo Store.
-   Store = INACTIVE.
+6. Admin lập Contract từ Application đã duyệt.
+   Hệ thống tự tạo Store INACTIVE (mã tự sinh, tên/địa chỉ lấy từ hồ sơ).
 
-7. Admin tạo Contract.
+7. Hợp đồng được ký (ngày ký).
 
 8. Store Owner hoàn thành điều kiện tài chính ban đầu theo Contract.
 
@@ -2161,7 +2038,7 @@ Không làm tròn Royalty từng ngày rồi cộng lại.
 | Một User có nhiều Store | Có |
 | Một User có nhiều Application đang mở | Không |
 | Application bị reject có nộp lại được không | Có |
-| Approve Application tự tạo Store | Không |
+| Approve Application tự tạo Store | Không; Store được tạo tự động khi lập Contract |
 | Xóa Application đã gửi | Không, dùng WITHDRAWN |
 | Một Application sinh nhiều Store | Không |
 | Store mới tạo | INACTIVE |
@@ -2179,7 +2056,7 @@ Không làm tròn Royalty từng ngày rồi cộng lại.
 | Promotion do ai tạo | Brand/Admin |
 | Nhiều Promotion trong một ngày | Có |
 | Discount phải phân biệt theo Promotion | Có |
-| Promotion funding | BRAND / STORE / SHARED |
+| Chi phí Promotion | Thương hiệu chịu 100% |
 | Brand Support | Trừ Invoice |
 | Invoice cycle | Theo tháng |
 | Due date | 7 ngày |
@@ -2351,7 +2228,7 @@ mà không quản lý từng giao dịch.
 
 Cần chốt:
 
-- Có được sửa discount/rate funding khi Promotion đã ACTIVE không?
+- Có được sửa discount khi Promotion đã ACTIVE không?
 - Nếu sửa thì hiệu lực từ thời điểm nào?
 - Revenue trước thời điểm sửa giữ rule cũ như thế nào?
 

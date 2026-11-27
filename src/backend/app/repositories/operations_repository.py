@@ -79,7 +79,7 @@ class OperationsRepository:
     ) -> None:
         await connection.execute(
             "CALL app.proc_create_promotion("
-            "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+            "$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
             values["promotion_id"],
             values["actor_id"],
             values["name"],
@@ -89,9 +89,6 @@ class OperationsRepository:
             values["start_date"],
             values["end_date"],
             values["scope"],
-            values["funding_type"],
-            values["brand_share"],
-            values["store_share"],
             values["store_ids"],
         )
 
@@ -124,14 +121,6 @@ class OperationsRepository:
             actor_id,
             reason,
         )
-
-    async def get_promotion(
-        self, connection: asyncpg.Connection, promotion_id: UUID
-    ) -> dict[str, Any] | None:
-        row = await connection.fetchrow(
-            "SELECT * FROM app.fn_get_promotion($1)", promotion_id
-        )
-        return _json_object(row["data"]) if row else None
 
     async def save_revenue(
         self, connection: asyncpg.Connection, **values: Any
@@ -184,14 +173,6 @@ class OperationsRepository:
             reason,
         )
 
-    async def get_revenue(
-        self, connection: asyncpg.Connection, revenue_id: UUID
-    ) -> dict[str, Any] | None:
-        row = await connection.fetchrow(
-            "SELECT * FROM app.fn_get_revenue($1)", revenue_id
-        )
-        return _json_object(row["data"]) if row else None
-
     async def create_billing_adjustment(
         self, connection: asyncpg.Connection, **values: Any
     ) -> None:
@@ -239,13 +220,15 @@ class OperationsRepository:
             reason,
         )
 
-    async def get_invoice(
-        self, connection: asyncpg.Connection, invoice_id: UUID
+    async def get_document(
+        self, connection: asyncpg.Connection, kind: str, record_id: UUID
     ) -> dict[str, Any] | None:
-        row = await connection.fetchrow(
-            "SELECT * FROM app.fn_get_invoice($1)", invoice_id
-        )
-        return _json_object(row["data"]) if row else None
+        function = {
+            "contract": "app.fn_contract_document",
+            "invoice": "app.fn_invoice_document",
+        }[kind]
+        value = await connection.fetchval(f"SELECT {function}($1)", record_id)
+        return _json_object(value) if value else None
 
     async def record_payment(
         self, connection: asyncpg.Connection, **values: Any

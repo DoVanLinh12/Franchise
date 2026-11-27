@@ -1,4 +1,5 @@
 -- Stored procedures/functions for 040_promotions.sql.
+-- Promotions are fully funded by the brand.
 
 CREATE OR REPLACE PROCEDURE app.proc_create_promotion(
     p_promotion_id uuid,
@@ -10,9 +11,6 @@ CREATE OR REPLACE PROCEDURE app.proc_create_promotion(
     p_start_date date,
     p_end_date date,
     p_scope text,
-    p_funding_type text,
-    p_brand_share numeric,
-    p_store_share numeric,
     p_store_ids uuid[]
 )
 LANGUAGE plpgsql
@@ -26,13 +24,11 @@ BEGIN
     END IF;
     INSERT INTO app.promotions (
         id, name, description, discount_type, discount_value,
-        start_date, end_date, scope, funding_type,
-        brand_share_percent, store_share_percent, created_by
+        start_date, end_date, scope, created_by
     ) VALUES (
         p_promotion_id, btrim(p_name), nullif(btrim(p_description), ''),
         upper(p_discount_type), p_discount_value, p_start_date, p_end_date,
-        upper(p_scope), upper(p_funding_type), p_brand_share, p_store_share,
-        p_actor_id
+        upper(p_scope), p_actor_id
     );
     IF upper(p_scope) = 'SELECTED_STORES' THEN
         IF coalesce(array_length(p_store_ids, 1), 0) = 0 THEN
@@ -92,16 +88,6 @@ BEGIN
         nullif(btrim(p_reason), '')
     );
 END;
-$$;
-
-CREATE OR REPLACE FUNCTION app.fn_get_promotion(p_promotion_id uuid)
-RETURNS TABLE (data jsonb)
-LANGUAGE sql STABLE AS $$
-    SELECT to_jsonb(p) || jsonb_build_object(
-        'store_ids', coalesce((SELECT jsonb_agg(ps.store_id)
-            FROM app.promotion_stores ps WHERE ps.promotion_id = p.id), '[]'::jsonb)
-    ) FROM app.promotions p
-    WHERE p.id = p_promotion_id AND p.deleted_at IS NULL;
 $$;
 
 CREATE OR REPLACE PROCEDURE app.proc_soft_delete_promotion(

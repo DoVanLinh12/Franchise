@@ -12,9 +12,8 @@ CALL app.proc_register_user(
     '30000000-0000-0000-0000-000000000003',
     'phase-accountant@example.com', 'hash', 'Phase Accountant', NULL
 );
-INSERT INTO app.user_roles (user_id, role_id)
-SELECT '30000000-0000-0000-0000-000000000001', id
-FROM app.roles WHERE code = 'ADMIN';
+UPDATE app.users SET roles = ARRAY['ADMIN']::varchar(30)[]
+WHERE id = '30000000-0000-0000-0000-000000000001';
 CALL app.proc_assign_user_role(
     '30000000-0000-0000-0000-000000000003', 'ACCOUNTANT',
     '30000000-0000-0000-0000-000000000001'
@@ -34,21 +33,15 @@ CALL app.proc_approve_franchise_application(
     '31000000-0000-0000-0000-000000000001',
     '30000000-0000-0000-0000-000000000001', 'Approved'
 );
-CALL app.proc_create_store_from_application(
-    '32000000-0000-0000-0000-000000000001',
-    '31000000-0000-0000-0000-000000000001',
-    '30000000-0000-0000-0000-000000000001',
-    '30000000-0000-0000-0000-000000000002',
-    'PHASE-001', 'Phase Store', 'Phase Address', NULL, NULL
-);
 CALL app.proc_create_draft_contract(
     '33000000-0000-0000-0000-000000000001',
     '30000000-0000-0000-0000-000000000001',
-    '32000000-0000-0000-0000-000000000001',
+    '31000000-0000-0000-0000-000000000001',
     'PHASE-CONTRACT-001', current_date,
     date_trunc('month', current_date)::date,
     (date_trunc('month', current_date) + interval '1 year')::date,
-    5, 100000000, 20000000, 1000000, 2000000
+    5, 100000000, 20000000, 1000000, 2000000,
+    '32000000-0000-0000-0000-000000000001'
 );
 CALL app.proc_record_contract_financial_transaction(
     '34000000-0000-0000-0000-000000000001',
@@ -65,7 +58,7 @@ CALL app.proc_create_promotion(
     '35000000-0000-0000-0000-000000000001',
     '30000000-0000-0000-0000-000000000001',
     'Phase Promotion', NULL, 'FIXED_AMOUNT', 100000,
-    current_date, current_date + 7, 'ALL_STORES', 'SHARED', 60, 40,
+    current_date, current_date + 7, 'ALL_STORES',
     ARRAY[]::uuid[]
 );
 CALL app.proc_change_promotion_status(
@@ -102,13 +95,13 @@ CALL app.proc_issue_invoice(
 );
 CALL app.proc_record_payment(
     '38000000-0000-0000-0000-000000000001', 'PHASE-PAY-001',
-    '37000000-0000-0000-0000-000000000001', 1892000,
+    '37000000-0000-0000-0000-000000000001', 1870000,
     current_date, 'BANK_TRANSFER', 'REF-001',
     '30000000-0000-0000-0000-000000000003'
 );
 CALL app.proc_record_payment(
     '38000000-0000-0000-0000-000000000002', 'PHASE-PAY-002',
-    '37000000-0000-0000-0000-000000000001', 1892000,
+    '37000000-0000-0000-0000-000000000001', 1870000,
     current_date, 'BANK_TRANSFER', 'REF-002',
     '30000000-0000-0000-0000-000000000003'
 );
@@ -127,7 +120,7 @@ BEGIN
         '37000000-0000-0000-0000-000000000001'
     );
     IF v_invoice->>'status' <> 'PAID'
-       OR (v_invoice->>'invoice_total')::numeric <> 3784000
+       OR (v_invoice->>'invoice_total')::numeric <> 3740000
        OR (v_invoice->>'outstanding_amount')::numeric <> 0 THEN
         RAISE EXCEPTION 'INVOICE_FLOW_ASSERTION_FAILED:%', v_invoice;
     END IF;
@@ -151,7 +144,7 @@ BEGIN
         '37000000-0000-0000-0000-000000000001'
     );
     IF v_invoice->>'status' <> 'PARTIALLY_PAID'
-       OR (v_invoice->>'outstanding_amount')::numeric <> 1892000 THEN
+       OR (v_invoice->>'outstanding_amount')::numeric <> 1870000 THEN
         RAISE EXCEPTION 'PAYMENT_REVERSAL_ASSERTION_FAILED:%', v_invoice;
     END IF;
 END;

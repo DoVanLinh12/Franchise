@@ -31,8 +31,8 @@ BEGIN
                     entity_type, entity_id, dedupe_key
                 ) VALUES (
                     gen_random_uuid(), v_store.owner_id, 'REVENUE_OVERDUE',
-                    'Revenue report overdue',
-                    'Revenue for ' || v_date || ' is overdue',
+                    'Chậm báo cáo doanh thu',
+                    'Cửa hàng ' || v_store.name || ' chưa nộp doanh thu ngày ' || to_char(v_date, 'DD/MM/YYYY'),
                     'STORE', v_store.id,
                     'REVENUE_OVERDUE:' || v_store.id || ':' || v_date
                 ) ON CONFLICT (dedupe_key) DO NOTHING;
@@ -53,7 +53,7 @@ BEGIN
             entity_type, entity_id, dedupe_key
         ) VALUES (
             gen_random_uuid(), v_invoice.owner_id, 'INVOICE_OVERDUE',
-            'Invoice overdue', 'Invoice ' || v_invoice.invoice_no || ' is overdue',
+            'Hóa đơn quá hạn', 'Hóa đơn ' || v_invoice.invoice_no || ' đã quá hạn thanh toán',
             'INVOICE', v_invoice.id, 'INVOICE_OVERDUE:' || v_invoice.id
         ) ON CONFLICT (dedupe_key) DO NOTHING;
     END LOOP;
@@ -91,7 +91,7 @@ BEGIN
             CASE WHEN NEW.action = 'APPROVE_APPLICATION'
                 THEN 'APPLICATION_APPROVED' ELSE 'APPLICATION_REJECTED' END,
             CASE WHEN NEW.action = 'APPROVE_APPLICATION'
-                THEN 'Application approved' ELSE 'Application rejected' END,
+                THEN 'Hồ sơ được duyệt' ELSE 'Hồ sơ bị từ chối' END,
             coalesce(NEW.reason, NEW.action),
             'FRANCHISE_APPLICATION', NEW.entity_id,
             NEW.action || ':' || NEW.entity_id
@@ -115,7 +115,7 @@ BEGIN
                 entity_type, entity_id, dedupe_key
             ) VALUES (
                 gen_random_uuid(), v_store.owner_id, 'PROMOTION_STARTED',
-                'Promotion started', 'A promotion is available for your store',
+                'Khuyến mãi bắt đầu', 'Cửa hàng của bạn có chương trình khuyến mãi mới',
                 'PROMOTION', NEW.entity_id,
                 'PROMOTION_STARTED:' || NEW.entity_id || ':' || v_store.owner_id
             ) ON CONFLICT (dedupe_key) DO NOTHING;

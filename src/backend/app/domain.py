@@ -18,21 +18,9 @@ class SubmitApplicationCommand:
 
 
 @dataclass(frozen=True, slots=True)
-class CreateStoreCommand:
-    application_id: UUID
-    actor_id: UUID
-    owner_id: UUID
-    code: str
-    name: str
-    address: str
-    phone: str | None = None
-    email: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class CreateDraftContractCommand:
     actor_id: UUID
-    store_id: UUID
+    application_id: UUID
     contract_no: str
     signed_date: date | None
     effective_from: date
@@ -57,7 +45,6 @@ class AccessToken:
     access_token: str
     token_type: str
     access_expires_at: datetime
-    access_token_id: UUID
 
 
 @dataclass(frozen=True, slots=True)

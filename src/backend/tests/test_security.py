@@ -1,3 +1,4 @@
+import time
 from uuid import uuid4
 
 import pytest
@@ -24,6 +25,7 @@ def test_jwt_service_issues_typed_token_pair():
     )
     service = JwtService(config)
     user_id = uuid4()
+    now = int(time.time())
 
     token = service.issue_access_token(user_id, ["ADMIN"])
 
@@ -32,7 +34,7 @@ def test_jwt_service_issues_typed_token_pair():
     with pytest.raises(TokenError, match="Unexpected token type"):
         service.decode_access_token(service._encode({
             "sub": str(user_id), "jti": str(uuid4()), "type": "refresh",
-            "iat": 1900000000, "nbf": 1900000000, "exp": 1900000600,
+            "iat": now, "nbf": now, "exp": now + 600,
             "iss": config.JWT_ISSUER, "aud": config.JWT_AUDIENCE,
         }))
 

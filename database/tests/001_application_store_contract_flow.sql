@@ -15,12 +15,8 @@ VALUES
         'Integration Owner'
     );
 
-INSERT INTO app.user_roles (user_id, role_id)
-SELECT
-    '00000000-0000-0000-0000-000000000001',
-    id
-FROM app.roles
-WHERE code = 'ADMIN';
+UPDATE app.users SET roles = ARRAY['ADMIN']::varchar(30)[]
+WHERE id = '00000000-0000-0000-0000-000000000001';
 
 CALL app.proc_submit_franchise_application(
     '10000000-0000-0000-0000-000000000001',
@@ -46,22 +42,10 @@ CALL app.proc_approve_franchise_application(
     'Approved by integration test'
 );
 
-CALL app.proc_create_store_from_application(
-    '20000000-0000-0000-0000-000000000001',
-    '10000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000001',
-    '00000000-0000-0000-0000-000000000002',
-    'TEST-STORE-001',
-    'Integration Store',
-    'Integration Address',
-    '0900000000',
-    'store.integration@example.com'
-);
-
 CALL app.proc_create_draft_contract(
     '30000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000001',
-    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000001',
     'TEST-CONTRACT-001',
     DATE '2026-09-25',
     DATE '2026-10-01',
@@ -70,60 +54,64 @@ CALL app.proc_create_draft_contract(
     100000000,
     20000000,
     1000000,
-    2000000
+    2000000,
+    '20000000-0000-0000-0000-000000000001'
+);
+
+-- Making the contract creates the store automatically, not yet open.
+DO $$
+DECLARE v_store app.stores%ROWTYPE; v_contract app.contracts%ROWTYPE;
+BEGIN
+    SELECT * INTO v_store FROM app.fn_get_store('20000000-0000-0000-0000-000000000001');
+    SELECT * INTO v_contract FROM app.fn_get_contract('30000000-0000-0000-0000-000000000001');
+    IF v_store.status <> 'INACTIVE' OR v_store.code !~ '^CH[0-9]{4}$'
+       OR v_store.name <> 'Integration Store' OR v_store.address <> 'Integration Address'
+       OR v_store.owner_id <> '00000000-0000-0000-0000-000000000002'
+       OR v_store.activated_at IS NOT NULL THEN
+        RAISE EXCEPTION 'Expected an INACTIVE store generated from the application: %', to_jsonb(v_store);
+    END IF;
+    IF v_contract.status <> 'DRAFT' OR v_contract.store_id <> v_store.id THEN
+        RAISE EXCEPTION 'Draft contract must be linked to the new store';
+    END IF;
+    IF (SELECT converted_at FROM app.fn_get_franchise_application(
+            '10000000-0000-0000-0000-000000000001')) IS NULL THEN
+        RAISE EXCEPTION 'Application must be converted when the contract is made';
+    END IF;
+    IF NOT app.user_has_role('00000000-0000-0000-0000-000000000002', 'STORE_OWNER') THEN
+        RAISE EXCEPTION 'Expected STORE_OWNER role assignment';
+    END IF;
+END;
+$$;
+
+CALL app.proc_record_contract_financial_transaction(
+    '40000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000001',
+    'INITIAL_FEE_PAYMENT', 20000000, DATE '2026-09-25', 'BANK-INT-001', NULL
+);
+
+CALL app.proc_activate_contract(
+    '30000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000001'
 );
 
 DO $$
-DECLARE
-    v_application_status text;
-    v_application_converted_at timestamptz;
-    v_store_status text;
-    v_contract_status text;
-    v_is_store_owner boolean;
-    v_audit_count integer;
+DECLARE v_store app.stores%ROWTYPE; v_actions text[];
 BEGIN
-    SELECT status, converted_at
-    INTO v_application_status, v_application_converted_at
-    FROM app.fn_get_franchise_application(
-        '10000000-0000-0000-0000-000000000001'
-    );
-
-    SELECT status INTO v_store_status
-    FROM app.fn_get_store('20000000-0000-0000-0000-000000000001');
-
-    SELECT status INTO v_contract_status
-    FROM app.fn_get_contract('30000000-0000-0000-0000-000000000001');
-
-    v_is_store_owner := app.user_has_role(
-        '00000000-0000-0000-0000-000000000002',
-        'STORE_OWNER'
-    );
-
-    SELECT count(*) INTO v_audit_count
+    SELECT * INTO v_store FROM app.fn_get_store('20000000-0000-0000-0000-000000000001');
+    IF v_store.status <> 'ACTIVE' OR v_store.activated_at IS NULL THEN
+        RAISE EXCEPTION 'Store must open when the contract is activated';
+    END IF;
+    IF (SELECT status FROM app.fn_get_contract('30000000-0000-0000-0000-000000000001')) <> 'ACTIVE' THEN
+        RAISE EXCEPTION 'Expected ACTIVE contract';
+    END IF;
+    SELECT array_agg(action ORDER BY action) INTO v_actions
     FROM app.audit_logs
-    WHERE entity_id IN (
-        '10000000-0000-0000-0000-000000000001',
-        '20000000-0000-0000-0000-000000000001',
-        '30000000-0000-0000-0000-000000000001'
-    );
-
-    IF v_application_status <> 'APPROVED' THEN
-        RAISE EXCEPTION 'Expected APPROVED application';
-    END IF;
-    IF v_application_converted_at IS NULL THEN
-        RAISE EXCEPTION 'Expected converted application';
-    END IF;
-    IF v_store_status <> 'INACTIVE' THEN
-        RAISE EXCEPTION 'Expected INACTIVE store';
-    END IF;
-    IF v_contract_status <> 'DRAFT' THEN
-        RAISE EXCEPTION 'Expected DRAFT contract';
-    END IF;
-    IF NOT v_is_store_owner THEN
-        RAISE EXCEPTION 'Expected STORE_OWNER role assignment';
-    END IF;
-    IF v_audit_count <> 5 THEN
-        RAISE EXCEPTION 'Expected 5 audit records, found %', v_audit_count;
+    WHERE entity_id IN ('20000000-0000-0000-0000-000000000001',
+                        '30000000-0000-0000-0000-000000000001');
+    IF v_actions <> ARRAY['ACTIVATE_CONTRACT', 'CREATE_CONTRACT', 'CREATE_STORE',
+                          'RECORD_CONTRACT_PAYMENT']::text[] THEN
+        RAISE EXCEPTION 'Unexpected audit actions: %', v_actions;
     END IF;
 END;
 $$;

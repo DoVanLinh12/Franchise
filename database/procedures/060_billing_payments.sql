@@ -35,7 +35,6 @@ DECLARE
     v_period_end date := (date_trunc('month', p_period_month)
         + interval '1 month - 1 day')::date;
     v_contract app.contracts%ROWTYPE;
-    v_monthly_close_id uuid := gen_random_uuid();
     v_gross numeric; v_discount numeric; v_net numeric; v_brand numeric;
     v_royalty numeric; v_positive numeric; v_negative numeric;
     v_credit numeric; v_fee_subtotal numeric; v_deductions numeric;
@@ -64,18 +63,20 @@ BEGIN
     FROM app.revenues r
     WHERE r.store_id = p_store_id AND r.status = 'APPROVED'
       AND r.business_date BETWEEN v_period AND v_period_end;
-    SELECT coalesce(sum(d.brand_support_amount), 0) INTO v_brand
+    SELECT coalesce(sum(d.discount_amount), 0) INTO v_brand
     FROM app.revenue_promotion_details d
     JOIN app.revenues r ON r.id = d.revenue_id
     WHERE r.store_id = p_store_id AND r.status = 'APPROVED'
       AND r.business_date BETWEEN v_period AND v_period_end;
-    SELECT coalesce(sum(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0),
-           abs(coalesce(sum(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0))
-    INTO v_positive, v_negative
+    SELECT coalesce(sum(CASE WHEN adjustment_type = 'ADJUSTMENT' AND amount > 0
+                             THEN amount ELSE 0 END), 0),
+           abs(coalesce(sum(CASE WHEN adjustment_type = 'ADJUSTMENT' AND amount < 0
+                                 THEN amount ELSE 0 END), 0)),
+           abs(coalesce(sum(CASE WHEN adjustment_type = 'CREDIT'
+                                 THEN amount ELSE 0 END), 0))
+    INTO v_positive, v_negative, v_credit
     FROM app.billing_adjustments
     WHERE store_id = p_store_id AND status = 'PENDING';
-    SELECT coalesce(sum(remaining_amount), 0) INTO v_credit
-    FROM app.store_credits WHERE store_id = p_store_id;
 
     v_royalty := round(v_gross * v_contract.royalty_rate / 100);
     v_fee_subtotal := v_royalty + v_contract.system_fee
@@ -87,55 +88,34 @@ BEGIN
     v_vat := round(v_taxable * p_vat_rate / 100);
     v_total := v_taxable + v_vat;
 
-    INSERT INTO app.monthly_closes (
-        id, store_id, period_month, monthly_gross_revenue,
-        monthly_promotion_discount, monthly_net_revenue,
-        brand_promotion_support, closed_by
-    ) VALUES (
-        v_monthly_close_id, p_store_id, v_period, v_gross,
-        v_discount, v_net, v_brand, p_actor_id
-    ) ON CONFLICT (store_id, period_month) DO UPDATE SET
-        monthly_gross_revenue = excluded.monthly_gross_revenue,
-        monthly_promotion_discount = excluded.monthly_promotion_discount,
-        monthly_net_revenue = excluded.monthly_net_revenue,
-        brand_promotion_support = excluded.brand_promotion_support,
-        closed_by = excluded.closed_by, closed_at = now()
-    RETURNING id INTO v_monthly_close_id;
-
     INSERT INTO app.invoices (
-        id, invoice_no, store_id, contract_id, monthly_close_id,
-        period_month, royalty_rate, monthly_gross_revenue, royalty_fee,
+        id, invoice_no, store_id, contract_id, period_month, royalty_rate,
+        monthly_gross_revenue, monthly_promotion_discount, monthly_net_revenue,
+        royalty_fee,
         system_fee, service_fee, positive_adjustments,
         brand_promotion_support, carried_credit, negative_adjustments,
         fee_subtotal, deductions, taxable_amount, vat_rate, vat_amount,
         invoice_total, outstanding_amount, created_by
     ) VALUES (
         p_invoice_id, btrim(p_invoice_no), p_store_id, v_contract.id,
-        v_monthly_close_id, v_period, v_contract.royalty_rate, v_gross,
+        v_period, v_contract.royalty_rate, v_gross, v_discount, v_net,
         v_royalty, v_contract.system_fee, v_contract.service_fee,
         v_positive, v_brand, v_credit, v_negative, v_fee_subtotal,
         v_deductions, v_taxable, p_vat_rate, v_vat, v_total, v_total,
         p_actor_id
     );
-    INSERT INTO app.invoice_items (id, invoice_id, item_type, description, amount)
-    VALUES
-        (gen_random_uuid(), p_invoice_id, 'ROYALTY', 'Royalty fee', v_royalty),
-        (gen_random_uuid(), p_invoice_id, 'SYSTEM_FEE', 'System fee', v_contract.system_fee),
-        (gen_random_uuid(), p_invoice_id, 'SERVICE_FEE', 'Service fee', v_contract.service_fee),
-        (gen_random_uuid(), p_invoice_id, 'PROMOTION_SUPPORT', 'Brand promotion support', -v_brand),
-        (gen_random_uuid(), p_invoice_id, 'CARRIED_CREDIT', 'Carried credit', -v_credit),
-        (gen_random_uuid(), p_invoice_id, 'BILLING_ADJUSTMENT', 'Net billing adjustments', v_positive - v_negative);
     UPDATE app.billing_adjustments SET status = 'APPLIED',
         applied_invoice_id = p_invoice_id, applied_at = now()
     WHERE store_id = p_store_id AND status = 'PENDING';
-    UPDATE app.store_credits SET remaining_amount = 0
-    WHERE store_id = p_store_id AND remaining_amount > 0;
     IF v_new_credit > 0 THEN
-        INSERT INTO app.store_credits (
-            id, store_id, source_invoice_id, amount, remaining_amount
+        -- Store credit is a pending negative CREDIT entry for the next invoice.
+        INSERT INTO app.billing_adjustments (
+            id, store_id, source_period, amount, reason, created_by,
+            adjustment_type, source_invoice_id
         ) VALUES (
-            gen_random_uuid(), p_store_id, p_invoice_id,
-            v_new_credit, v_new_credit
+            gen_random_uuid(), p_store_id, v_period, -v_new_credit,
+            'Tiền dư chuyển từ hóa đơn ' || btrim(p_invoice_no), p_actor_id,
+            'CREDIT', p_invoice_id
         );
     END IF;
     INSERT INTO app.audit_logs (
@@ -169,8 +149,8 @@ BEGIN
         id, user_id, notification_type, title, message,
         entity_type, entity_id, dedupe_key
     ) VALUES (
-        gen_random_uuid(), v_owner_id, 'INVOICE_ISSUED', 'Invoice issued',
-        'Invoice ' || v_invoice.invoice_no || ' has been issued',
+        gen_random_uuid(), v_owner_id, 'INVOICE_ISSUED', 'Hóa đơn đã phát hành',
+        'Hóa đơn ' || v_invoice.invoice_no || ' đã được phát hành',
         'INVOICE', p_invoice_id, 'INVOICE_ISSUED:' || p_invoice_id
     ) ON CONFLICT (dedupe_key) DO NOTHING;
     INSERT INTO app.audit_logs (actor_id, action, entity_type, entity_id)
@@ -244,7 +224,7 @@ BEGIN
         entity_type, entity_id, dedupe_key
     ) VALUES (
         gen_random_uuid(), v_owner_id, 'PAYMENT_CONFIRMED',
-        'Payment confirmed', 'Payment ' || p_payment_no || ' confirmed',
+        'Đã ghi nhận thanh toán', 'Thanh toán ' || p_payment_no || ' đã được ghi nhận',
         'PAYMENT', p_payment_id, 'PAYMENT_CONFIRMED:' || p_payment_id
     );
     INSERT INTO app.audit_logs (
@@ -289,7 +269,7 @@ BEGIN
         entity_type, entity_id, dedupe_key
     ) VALUES (
         gen_random_uuid(), v_owner_id, 'PAYMENT_REVERSED',
-        'Payment reversed', btrim(p_reason), 'PAYMENT', p_payment_id,
+        'Thanh toán bị đảo', btrim(p_reason), 'PAYMENT', p_payment_id,
         'PAYMENT_REVERSED:' || p_payment_id
     );
     INSERT INTO app.audit_logs (
@@ -302,8 +282,15 @@ CREATE OR REPLACE FUNCTION app.fn_get_invoice(p_invoice_id uuid)
 RETURNS TABLE (data jsonb)
 LANGUAGE sql STABLE AS $$
     SELECT to_jsonb(i) || jsonb_build_object(
-        'items', coalesce((SELECT jsonb_agg(to_jsonb(ii))
-            FROM app.invoice_items ii WHERE ii.invoice_id = i.id), '[]'::jsonb),
+        'items', jsonb_build_array(
+            jsonb_build_object('item_type', 'ROYALTY', 'amount', i.royalty_fee),
+            jsonb_build_object('item_type', 'SYSTEM_FEE', 'amount', i.system_fee),
+            jsonb_build_object('item_type', 'SERVICE_FEE', 'amount', i.service_fee),
+            jsonb_build_object('item_type', 'BILLING_ADJUSTMENT',
+                'amount', i.positive_adjustments - i.negative_adjustments),
+            jsonb_build_object('item_type', 'PROMOTION_SUPPORT',
+                'amount', -i.brand_promotion_support),
+            jsonb_build_object('item_type', 'CARRIED_CREDIT', 'amount', -i.carried_credit)),
         'payments', coalesce((SELECT jsonb_agg(to_jsonb(p))
             FROM app.payments p WHERE p.invoice_id = i.id), '[]'::jsonb)
     ) FROM app.invoices i WHERE i.id = p_invoice_id;

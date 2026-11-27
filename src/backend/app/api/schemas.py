@@ -87,18 +87,8 @@ class ReviewRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
-class StoreCreateRequest(BaseModel):
-    application_id: UUID
-    owner_id: UUID
-    code: str
-    name: str
-    address: str
-    phone: str | None = None
-    email: str | None = None
-
-
 class ContractCreateRequest(BaseModel):
-    store_id: UUID
+    application_id: UUID
     contract_no: str
     signed_date: date | None = None
     effective_from: date
@@ -126,9 +116,6 @@ class PromotionCreateRequest(BaseModel):
     start_date: date
     end_date: date
     scope: str
-    funding_type: str
-    brand_share: Decimal
-    store_share: Decimal
     store_ids: list[UUID] = Field(default_factory=list)
 
 

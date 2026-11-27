@@ -1,0 +1,7 @@
+DejaVu fonts (DejaVuSans, DejaVuSans-Bold, DejaVuSans-Oblique) are used to render
+Vietnamese text in exported PDF documents.
+
+DejaVu fonts are free software: Bitstream Vera Fonts Copyright (c) 2003 by
+Bitstream, Inc.; DejaVu changes are in the public domain. Redistribution is
+permitted under the Bitstream Vera / Arev license. Full text:
+https://dejavu-fonts.github.io/License.html

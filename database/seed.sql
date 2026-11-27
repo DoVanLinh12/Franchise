@@ -1,705 +1,512 @@
--- Dữ liệu mẫu local cho hệ thống Franchise Management.
--- Tất cả tài khoản mẫu dùng mật khẩu: Admin@123
--- Script có thể chạy lại nhiều lần mà không tạo bản ghi trùng.
-
+-- =============================================================================
+-- Dữ liệu mẫu thực tế cho chuỗi "Mộc Miên Coffee".
+-- * Mọi ID do database tự sinh (DEFAULT gen_random_uuid()); các bản ghi liên kết
+--   với nhau qua khóa tự nhiên: email, mã cửa hàng, số hợp đồng, số hóa đơn.
+-- * Đi đúng luồng nghiệp vụ: hồ sơ được duyệt -> hợp đồng ký + thu phí ->
+--   kích hoạt -> cửa hàng mở; doanh thu hằng ngày -> kế toán duyệt -> hóa đơn
+--   tháng (phí bản quyền trên doanh thu gộp, thương hiệu chịu 100% khuyến mãi,
+--   VAT 10%) -> thanh toán.
+-- * Mọi ngày tháng tính tương đối theo current_date nên dữ liệu luôn "mới".
+-- * Chỉ chạy khi database chưa có người dùng (xem run-seed.sh).
+-- Tất cả tài khoản dùng mật khẩu: Admin@123
+-- =============================================================================
 BEGIN;
+SELECT setseed(0.2026);
 
 -- ---------------------------------------------------------------------------
--- 1. Người dùng và vai trò
+-- 1. Người dùng
 -- ---------------------------------------------------------------------------
-INSERT INTO app.users (id, email, password_hash, full_name, phone, status)
-VALUES
-    ('90000000-0000-0000-0000-000000000001', 'admin@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Nguyễn Hoàng Nam', '0901234567', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000002', 'owner@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Lê Minh Anh', '0912345678', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000003', 'accountant@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Trần Thu Hà', '0987654321', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000004', 'pham.quang.huy@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Phạm Quang Huy', '0903456789', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000005', 'vu.ngoc.lan@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Vũ Ngọc Lan', '0934567890', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000006', 'do.thanh.tung@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Đỗ Thanh Tùng', '0945678901', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000007', 'nguyen.thao.vy@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Nguyễn Thảo Vy', '0966789012', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000008', 'hoang.gia.bao@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Hoàng Gia Bảo', '0977890123', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000009', 'bui.khanh.linh@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Bùi Khánh Linh', '0888901234', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000010', 'dang.tuan.kiet@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Đặng Tuấn Kiệt', '0899012345', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000011', 'mai.phuong.thao@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Mai Phương Thảo', '0901122334', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000012', 'truong.duc.long@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Trương Đức Long', '0912233445', 'ACTIVE'),
-    ('90000000-0000-0000-0000-000000000013', 'ngo.hai.yen@franchise.local',
-     '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
-     'Ngô Hải Yến', '0923344556', 'ACTIVE')
-ON CONFLICT (id) DO UPDATE SET
-    email = EXCLUDED.email, password_hash = EXCLUDED.password_hash,
-    full_name = EXCLUDED.full_name, phone = EXCLUDED.phone,
-    status = EXCLUDED.status, updated_at = now(), deleted_at = NULL;
-
-INSERT INTO app.user_roles (user_id, role_id)
-SELECT mapping.user_id, r.id
+INSERT INTO app.users (email, password_hash, full_name, phone, roles, created_at, last_login_at)
+SELECT v.email,
+       '$argon2id$v=19$m=65536,t=3,p=4$GCS9gjKoIzSDnIJaSdgHWw$DD11WnCEi0PTaX+LZcWPizuh6dir7z7kbuUrO0NEtJo',
+       v.full_name, v.phone, v.roles::varchar(30)[],
+       now() - make_interval(days => v.joined_days_ago),
+       CASE WHEN v.roles <> '{}' THEN now() - make_interval(hours => v.joined_days_ago % 48) END
 FROM (VALUES
-    ('90000000-0000-0000-0000-000000000001'::uuid, 'ADMIN'),
-    ('90000000-0000-0000-0000-000000000002'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000003'::uuid, 'ACCOUNTANT'),
-    ('90000000-0000-0000-0000-000000000004'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000005'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000006'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000007'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000008'::uuid, 'STORE_OWNER'),
-    ('90000000-0000-0000-0000-000000000009'::uuid, 'STORE_OWNER')
-) AS mapping(user_id, role_code)
-JOIN app.roles r ON r.code = mapping.role_code
-ON CONFLICT DO NOTHING;
+    ('admin@franchise.local',            'Nguyễn Hoàng Nam',   '0901234567', '{ADMIN}',        900),
+    ('accountant@franchise.local',       'Trần Thu Hà',        '0903456781', '{ACCOUNTANT}',   880),
+    ('ketoan.minh@franchise.local',      'Phạm Đức Minh',      '0912678345', '{ACCOUNTANT}',   400),
+    ('owner@franchise.local',            'Lê Minh Anh',        '0912345678', '{STORE_OWNER}',  600),
+    ('pham.quang.huy@franchise.local',   'Phạm Quang Huy',     '0903456789', '{STORE_OWNER}',  560),
+    ('vu.ngoc.lan@franchise.local',      'Vũ Ngọc Lan',        '0934567890', '{STORE_OWNER}',  490),
+    ('ngo.duc.thang@franchise.local',    'Ngô Đức Thắng',      '0985123456', '{STORE_OWNER}',  450),
+    ('do.thanh.tung@franchise.local',    'Đỗ Thanh Tùng',      '0945678901', '{STORE_OWNER}',  470),
+    ('bui.thanh.huong@franchise.local',  'Bùi Thanh Hương',    '0978234561', '{STORE_OWNER}',  300),
+    ('nguyen.thao.vy@franchise.local',   'Nguyễn Thảo Vy',     '0909876543', '{STORE_OWNER}',  540),
+    ('hoang.gia.bao@franchise.local',    'Hoàng Gia Bảo',      '0918765432', '{STORE_OWNER}',  420),
+    ('tran.minh.chau@franchise.local',   'Trần Minh Châu',     '0938112233', '{STORE_OWNER}',  350),
+    ('le.hoang.phuc@franchise.local',    'Lê Hoàng Phúc',      '0967334455', '{STORE_OWNER}',  270),
+    ('dang.thu.trang@franchise.local',   'Đặng Thu Trang',     '0939556677', '{STORE_OWNER}',  380),
+    ('vo.quoc.khanh@franchise.local',    'Võ Quốc Khánh',      '0905667788', '{STORE_OWNER}',  240),
+    ('truong.my.linh@franchise.local',   'Trương Mỹ Linh',     '0918990011', '{STORE_OWNER}',  180),
+    ('bui.khanh.linh@franchise.local',   'Bùi Khánh Linh',     '0888901234', '{}',              95),
+    ('dang.tuan.kiet@franchise.local',   'Đặng Tuấn Kiệt',     '0977012345', '{}',              12),
+    ('mai.phuong.thao@franchise.local',  'Mai Phương Thảo',    '0966123456', '{}',              25),
+    ('nguyen.van.son@franchise.local',   'Nguyễn Văn Sơn',     '0913223344', '{}',               4),
+    ('truong.duc.long@franchise.local',  'Trương Đức Long',    '0911234567', '{}',              70),
+    ('ngo.hai.yen@franchise.local',      'Ngô Hải Yến',        '0923344556', '{}',              50)
+) AS v(email, full_name, phone, roles, joined_days_ago);
 
 -- ---------------------------------------------------------------------------
--- 2. Hồ sơ đăng ký nhượng quyền
+-- 2. Danh mục cửa hàng nhượng quyền (bảng tạm, chỉ dùng trong seed)
+-- ---------------------------------------------------------------------------
+CREATE TEMP TABLE seed_store (
+    no int, code text, name text, address text, phone text, store_email text,
+    owner_email text, opened_days_ago int, area numeric, budget numeric,
+    royalty numeric, initial_fee numeric, deposit numeric, system_fee numeric,
+    service_fee numeric, base_daily numeric, status text, suspended_days_ago int
+) ON COMMIT DROP;
+INSERT INTO seed_store VALUES
+ ( 1,'CH0001','Mộc Miên Coffee Hoàn Kiếm','38 Hàng Bông, phường Hàng Bông, quận Hoàn Kiếm, Hà Nội','02439361268','hoankiem@mocmien.vn','owner@franchise.local',520,118,1850000000,5.0,180000000,50000000,1500000,2500000,16500000,'ACTIVE',NULL),
+ ( 2,'CH0002','Mộc Miên Coffee Cầu Giấy','126 Trần Thái Tông, phường Dịch Vọng Hậu, quận Cầu Giấy, Hà Nội','02437681226','caugiay@mocmien.vn','pham.quang.huy@franchise.local',470,95,1600000000,5.0,180000000,50000000,1500000,2500000,14200000,'ACTIVE',NULL),
+ ( 3,'CH0003','Mộc Miên Coffee Bạch Mai','215 Bạch Mai, phường Cầu Dền, quận Hai Bà Trưng, Hà Nội','02436281125','bachmai@mocmien.vn','vu.ngoc.lan@franchise.local',400,88,1500000000,5.5,165000000,45000000,1500000,2200000,12800000,'ACTIVE',NULL),
+ ( 4,'CH0004','Mộc Miên Coffee Thanh Xuân','72A Nguyễn Trãi, phường Thượng Đình, quận Thanh Xuân, Hà Nội','02435578072','thanhxuan@mocmien.vn','owner@franchise.local',300,105,1700000000,5.0,180000000,50000000,1500000,2500000,15100000,'ACTIVE',NULL),
+ ( 5,'CH0005','Mộc Miên Coffee Lê Chân','156 Tô Hiệu, phường Trại Cau, quận Lê Chân, Hải Phòng','02253856156','lechan@mocmien.vn','ngo.duc.thang@franchise.local',360,90,1300000000,5.0,160000000,40000000,1400000,2000000,11300000,'ACTIVE',NULL),
+ ( 6,'CH0006','Mộc Miên Coffee Hải Châu','84 Nguyễn Văn Linh, phường Nam Dương, quận Hải Châu, Đà Nẵng','02363561284','haichau@mocmien.vn','do.thanh.tung@franchise.local',380,110,1650000000,5.0,175000000,50000000,1400000,2300000,13600000,'ACTIVE',NULL),
+ ( 7,'CH0007','Mộc Miên Coffee Sơn Trà','25 Võ Nguyên Giáp, phường Phước Mỹ, quận Sơn Trà, Đà Nẵng','02363942025','sontra@mocmien.vn','bui.thanh.huong@franchise.local',215,130,2000000000,5.5,190000000,55000000,1500000,2500000,15800000,'ACTIVE',NULL),
+ ( 8,'CH0008','Mộc Miên Coffee Nguyễn Huệ','112 Nguyễn Huệ, phường Bến Nghé, Quận 1, TP. Hồ Chí Minh','02838221112','nguyenhue@mocmien.vn','nguyen.thao.vy@franchise.local',450,140,2400000000,6.0,220000000,70000000,1800000,3000000,21500000,'ACTIVE',NULL),
+ ( 9,'CH0009','Mộc Miên Coffee Thảo Điền','46 Xuân Thủy, phường Thảo Điền, TP. Thủ Đức, TP. Hồ Chí Minh','02837441246','thaodien@mocmien.vn','hoang.gia.bao@franchise.local',330,125,2100000000,5.5,200000000,60000000,1700000,2800000,18700000,'ACTIVE',NULL),
+ (10,'CH0010','Mộc Miên Coffee Võ Văn Tần','203 Võ Văn Tần, phường Võ Thị Sáu, Quận 3, TP. Hồ Chí Minh','02839307203','vovantan@mocmien.vn','tran.minh.chau@franchise.local',265,98,1750000000,5.5,190000000,55000000,1700000,2600000,16900000,'ACTIVE',NULL),
+ (11,'CH0011','Mộc Miên Coffee Phan Xích Long','88 Phan Xích Long, phường 2, quận Phú Nhuận, TP. Hồ Chí Minh','02835173088','phanxichlong@mocmien.vn','le.hoang.phuc@franchise.local',185,92,1550000000,5.0,180000000,50000000,1600000,2500000,14500000,'ACTIVE',NULL),
+ (12,'CH0012','Mộc Miên Coffee Ninh Kiều','72 Hai Bà Trưng, phường Tân An, quận Ninh Kiều, Cần Thơ','02923811272','ninhkieu@mocmien.vn','dang.thu.trang@franchise.local',290,100,1350000000,5.0,160000000,40000000,1400000,2000000,10400000,'SUSPENDED',12),
+ (13,'CH0013','Mộc Miên Coffee Nha Trang','52 Trần Phú, phường Lộc Thọ, TP. Nha Trang, Khánh Hòa','02583522052','nhatrang@mocmien.vn','vo.quoc.khanh@franchise.local',150,115,1800000000,5.5,185000000,55000000,1500000,2400000,13900000,'ACTIVE',NULL),
+ (14,'CH0014','Mộc Miên Coffee Đà Lạt','18 Trần Quốc Toản, phường 1, TP. Đà Lạt, Lâm Đồng','02633821018','dalat@mocmien.vn','truong.my.linh@franchise.local',95,85,1400000000,5.0,170000000,45000000,1400000,2200000,11800000,'ACTIVE',NULL),
+ (15,'CH0015','Mộc Miên Coffee Long Biên','9 Nguyễn Văn Cừ, phường Ngọc Lâm, quận Long Biên, Hà Nội','02438271009','longbien@mocmien.vn','pham.quang.huy@franchise.local',45,100,1600000000,5.0,180000000,50000000,1500000,2500000,12900000,'ACTIVE',NULL);
+
+-- ---------------------------------------------------------------------------
+-- 3. Hồ sơ nhượng quyền của các cửa hàng đã mở (đã duyệt, đã chuyển đổi)
 -- ---------------------------------------------------------------------------
 INSERT INTO app.franchise_applications (
-    id, applicant_id, applicant_name, email, phone,
-    proposed_store_name, proposed_address, proposed_area, investment_budget,
-    note, status, review_started_by, review_started_at, review_note,
-    reviewed_by, reviewed_at, withdrawn_by, withdrawn_at, withdrawal_reason,
+    applicant_id, applicant_name, email, phone, proposed_store_name,
+    proposed_address, proposed_area, investment_budget, note, status,
+    review_started_by, review_started_at, review_note, reviewed_by, reviewed_at,
     converted_at, created_at, updated_at
 )
-VALUES
-    ('91000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000002',
-     'Lê Minh Anh', 'owner@franchise.local', '0912345678', 'Mộc Miên Coffee Hoàn Kiếm',
-     '38 Hàng Bông, phường Hàng Bông, quận Hoàn Kiếm, Hà Nội', 118, 1850000000,
-     'Mặt bằng góc hai mặt tiền, gần khu phố đi bộ.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '910 days',
-     'Mặt bằng và phương án tài chính đạt yêu cầu.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '905 days', NULL, NULL, NULL,
-     current_date - interval '900 days', current_date - interval '925 days', current_date - interval '900 days'),
-    ('91000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000004',
-     'Phạm Quang Huy', 'pham.quang.huy@franchise.local', '0903456789', 'Mộc Miên Coffee Cầu Giấy',
-     '126 Trần Thái Tông, phường Dịch Vọng Hậu, quận Cầu Giấy, Hà Nội', 145, 2200000000,
-     'Khu văn phòng đông, có chỗ để xe máy.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '790 days',
-     'Chủ đầu tư có kinh nghiệm vận hành F&B.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '785 days', NULL, NULL, NULL,
-     current_date - interval '780 days', current_date - interval '805 days', current_date - interval '780 days'),
-    ('91000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000005',
-     'Vũ Ngọc Lan', 'vu.ngoc.lan@franchise.local', '0934567890', 'Mộc Miên Coffee Bạch Mai',
-     '215 Bạch Mai, phường Cầu Dền, quận Hai Bà Trưng, Hà Nội', 105, 1650000000,
-     'Tầng một nhà phố, khu dân cư ổn định.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '670 days',
-     'Đạt tiêu chuẩn vị trí và nhận diện.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '665 days', NULL, NULL, NULL,
-     current_date - interval '660 days', current_date - interval '682 days', current_date - interval '660 days'),
-    ('91000000-0000-0000-0000-000000000004', '90000000-0000-0000-0000-000000000006',
-     'Đỗ Thanh Tùng', 'do.thanh.tung@franchise.local', '0945678901', 'Mộc Miên Coffee Hải Châu',
-     '84 Nguyễn Văn Linh, phường Nam Dương, quận Hải Châu, Đà Nẵng', 132, 2050000000,
-     'Nằm trên trục đường sân bay vào trung tâm thành phố.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '550 days',
-     'Lưu lượng khách tốt, kế hoạch nhân sự phù hợp.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '545 days', NULL, NULL, NULL,
-     current_date - interval '540 days', current_date - interval '562 days', current_date - interval '540 days'),
-    ('91000000-0000-0000-0000-000000000005', '90000000-0000-0000-0000-000000000007',
-     'Nguyễn Thảo Vy', 'nguyen.thao.vy@franchise.local', '0966789012', 'Mộc Miên Coffee Nguyễn Huệ',
-     '112 Nguyễn Huệ, phường Sài Gòn, Thành phố Hồ Chí Minh', 168, 2800000000,
-     'Mô hình cửa hàng flagship tại khu trung tâm.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '430 days',
-     'Phương án đầu tư và thiết kế được phê duyệt.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '425 days', NULL, NULL, NULL,
-     current_date - interval '420 days', current_date - interval '445 days', current_date - interval '420 days'),
-    ('91000000-0000-0000-0000-000000000006', '90000000-0000-0000-0000-000000000008',
-     'Hoàng Gia Bảo', 'hoang.gia.bao@franchise.local', '0977890123', 'Mộc Miên Coffee Thảo Điền',
-     '46 Xuân Thủy, phường Thảo Điền, thành phố Thủ Đức, Thành phố Hồ Chí Minh', 155, 2450000000,
-     'Khu dân cư có tỷ lệ khách quốc tế cao.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '370 days',
-     'Đủ điều kiện thương mại và vận hành.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '365 days', NULL, NULL, NULL,
-     current_date - interval '360 days', current_date - interval '382 days', current_date - interval '360 days'),
-    ('91000000-0000-0000-0000-000000000007', '90000000-0000-0000-0000-000000000009',
-     'Bùi Khánh Linh', 'bui.khanh.linh@franchise.local', '0888901234', 'Mộc Miên Coffee Hạ Long',
-     '128 đường Hạ Long, phường Bãi Cháy, thành phố Hạ Long, Quảng Ninh', 138, 2100000000,
-     'Cửa hàng hướng biển, dự kiến khai trương đầu quý tới.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '70 days',
-     'Đã duyệt, đang hoàn thiện thiết kế và thi công.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '65 days', NULL, NULL, NULL,
-     current_date - interval '60 days', current_date - interval '82 days', current_date - interval '60 days'),
-    ('91000000-0000-0000-0000-000000000008', '90000000-0000-0000-0000-000000000009',
-     'Bùi Khánh Linh', 'bui.khanh.linh@franchise.local', '0888901234', 'Mộc Miên Coffee Ninh Kiều',
-     '72 Hai Bà Trưng, phường Tân An, quận Ninh Kiều, Cần Thơ', 125, 1900000000,
-     'Điểm bán đầu tiên tại khu vực Tây Nam Bộ.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '310 days',
-     'Đã hoàn tất đánh giá thị trường địa phương.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '305 days', NULL, NULL, NULL,
-     current_date - interval '300 days', current_date - interval '322 days', current_date - interval '300 days'),
-    ('91000000-0000-0000-0000-000000000009', '90000000-0000-0000-0000-000000000010',
-     'Đặng Tuấn Kiệt', 'dang.tuan.kiet@franchise.local', '0899012345', 'Mộc Miên Coffee Vinh',
-     '16 Lê Lợi, phường Hưng Bình, thành phố Vinh, Nghệ An', 120, 1750000000,
-     'Đề nghị khảo sát lưu lượng khách trong bán kính 2 km.', 'PENDING',
-     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-     current_date - interval '3 days', current_date - interval '3 days'),
-    ('91000000-0000-0000-0000-000000000010', '90000000-0000-0000-0000-000000000011',
-     'Mai Phương Thảo', 'mai.phuong.thao@franchise.local', '0901122334', 'Mộc Miên Coffee Quy Nhơn',
-     '95 An Dương Vương, phường Nguyễn Văn Cừ, thành phố Quy Nhơn, Bình Định', 142, 2150000000,
-     'Đã cung cấp hồ sơ tài chính, chờ thẩm định mặt bằng.', 'UNDER_REVIEW',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '2 days',
-     'Đang xác minh hợp đồng thuê mặt bằng.', NULL, NULL, NULL, NULL, NULL, NULL,
-     current_date - interval '6 days', current_date - interval '2 days'),
-    ('91000000-0000-0000-0000-000000000011', '90000000-0000-0000-0000-000000000012',
-     'Trương Đức Long', 'truong.duc.long@franchise.local', '0912233445', 'Mộc Miên Coffee Biên Hòa',
-     '204 Phạm Văn Thuận, phường Tân Tiến, thành phố Biên Hòa, Đồng Nai', 82, 980000000,
-     'Diện tích thực tế thấp hơn tiêu chuẩn mô hình.', 'REJECTED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '14 days',
-     'Mặt bằng chưa đạt diện tích tối thiểu và thiếu khu vực đỗ xe.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '10 days', NULL, NULL, NULL, NULL,
-     current_date - interval '20 days', current_date - interval '10 days'),
-    ('91000000-0000-0000-0000-000000000012', '90000000-0000-0000-0000-000000000013',
-     'Ngô Hải Yến', 'ngo.hai.yen@franchise.local', '0923344556', 'Mộc Miên Coffee Huế',
-     '41 Lê Lợi, phường Phú Hội, thành phố Huế, Thừa Thiên Huế', 130, 1950000000,
-     'Hồ sơ đạt yêu cầu, đang chờ ký hợp đồng thuê.', 'APPROVED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '12 days',
-     'Đủ điều kiện mở cửa hàng, chờ hoàn thiện giấy tờ mặt bằng.',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '7 days', NULL, NULL, NULL, NULL,
-     current_date - interval '18 days', current_date - interval '7 days')
-ON CONFLICT (id) DO UPDATE SET
-    applicant_name = EXCLUDED.applicant_name, email = EXCLUDED.email,
-    phone = EXCLUDED.phone, proposed_store_name = EXCLUDED.proposed_store_name,
-    proposed_address = EXCLUDED.proposed_address, proposed_area = EXCLUDED.proposed_area,
-    investment_budget = EXCLUDED.investment_budget, note = EXCLUDED.note,
-    status = EXCLUDED.status, review_started_by = EXCLUDED.review_started_by,
-    review_started_at = EXCLUDED.review_started_at, review_note = EXCLUDED.review_note,
-    reviewed_by = EXCLUDED.reviewed_by, reviewed_at = EXCLUDED.reviewed_at,
-    converted_at = EXCLUDED.converted_at, updated_at = EXCLUDED.updated_at,
-    deleted_at = NULL;
+SELECT u.id, u.full_name, u.email, u.phone, s.name, s.address, s.area, s.budget,
+       'Mặt bằng thuê dài hạn, đã khảo sát lượng khách văn phòng và sinh viên khu vực.',
+       'APPROVED', a.id, now() - make_interval(days => s.opened_days_ago + 30),
+       'Hồ sơ đầy đủ, địa điểm phù hợp tiêu chuẩn thương hiệu.',
+       a.id, now() - make_interval(days => s.opened_days_ago + 21),
+       now() - make_interval(days => s.opened_days_ago),
+       now() - make_interval(days => s.opened_days_ago + 45),
+       now() - make_interval(days => s.opened_days_ago)
+FROM seed_store s
+JOIN app.users u ON u.email = s.owner_email
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a;
+
+-- Hồ sơ đang ở các trạng thái khác (mỗi người một hồ sơ)
+INSERT INTO app.franchise_applications (
+    applicant_id, applicant_name, email, phone, proposed_store_name,
+    proposed_address, proposed_area, investment_budget, note, status,
+    review_started_by, review_started_at, review_note, reviewed_by, reviewed_at,
+    withdrawn_by, withdrawn_at, withdrawal_reason, created_at, updated_at
+)
+SELECT u.id, u.full_name, u.email, u.phone, v.store_name, v.address, v.area, v.budget, v.note, v.status,
+       CASE WHEN v.status IN ('UNDER_REVIEW','APPROVED','REJECTED') THEN a.id END,
+       CASE WHEN v.status IN ('UNDER_REVIEW','APPROVED','REJECTED') THEN now() - make_interval(days => v.days_ago - 3) END,
+       v.review_note,
+       CASE WHEN v.status IN ('APPROVED','REJECTED') THEN a.id END,
+       CASE WHEN v.status IN ('APPROVED','REJECTED') THEN now() - make_interval(days => v.days_ago - 8) END,
+       CASE WHEN v.status = 'WITHDRAWN' THEN u.id END,
+       CASE WHEN v.status = 'WITHDRAWN' THEN now() - make_interval(days => v.days_ago - 5) END,
+       CASE WHEN v.status = 'WITHDRAWN' THEN 'Gia đình thay đổi kế hoạch đầu tư, xin rút hồ sơ.' END,
+       now() - make_interval(days => v.days_ago), now() - make_interval(days => greatest(v.days_ago - 8, 0))
+FROM (VALUES
+ ('bui.khanh.linh@franchise.local','Mộc Miên Coffee Hạ Long','128 đường Hạ Long, phường Bãi Cháy, TP. Hạ Long, Quảng Ninh',138,2100000000,'Cửa hàng hướng biển, dự kiến khai trương đầu quý tới.','APPROVED','Đã duyệt, chờ ký hợp đồng và thanh toán phí ban đầu.',40),
+ ('mai.phuong.thao@franchise.local','Mộc Miên Coffee Vinh','35 Quang Trung, phường Quang Trung, TP. Vinh, Nghệ An',96,1350000000,'Gần trường đại học Vinh, lượng sinh viên đông.','UNDER_REVIEW','Đang thẩm định mặt bằng và năng lực tài chính.',18),
+ ('dang.tuan.kiet@franchise.local','Mộc Miên Coffee Biên Hòa','210 Phạm Văn Thuận, phường Tân Tiến, TP. Biên Hòa, Đồng Nai',110,1600000000,'Khu dân cư mới, chưa có thương hiệu cà phê chuỗi.','PENDING',NULL,10),
+ ('nguyen.van.son@franchise.local','Mộc Miên Coffee Huế','14 Lê Lợi, phường Vĩnh Ninh, TP. Huế, Thừa Thiên Huế',90,1250000000,'Mặt tiền đường Lê Lợi, gần sông Hương.','PENDING',NULL,3),
+ ('truong.duc.long@franchise.local','Mộc Miên Coffee Mỹ Đình','8 Lê Đức Thọ, phường Mỹ Đình 2, quận Nam Từ Liêm, Hà Nội',60,800000000,'Mặt bằng nhỏ trong ngõ.','REJECTED','Diện tích dưới 80 m² và ngân sách chưa đạt mức tối thiểu của thương hiệu.',65),
+ ('ngo.hai.yen@franchise.local','Mộc Miên Coffee Vũng Tàu','45 Thùy Vân, phường Thắng Tam, TP. Vũng Tàu, Bà Rịa - Vũng Tàu',120,1900000000,'Mặt biển Bãi Sau.','WITHDRAWN',NULL,45)
+) AS v(email, store_name, address, area, budget, note, status, review_note, days_ago)
+JOIN app.users u ON u.email = v.email
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a;
 
 -- ---------------------------------------------------------------------------
--- 3. Cửa hàng và hợp đồng
+-- 4. Cửa hàng (được mở khi hợp đồng kích hoạt) và hợp đồng
 -- ---------------------------------------------------------------------------
-INSERT INTO app.stores (
-    id, code, name, owner_id, application_id, address, phone, email,
-    status, activated_at, closed_at, created_at, updated_at
-)
-VALUES
-    ('92000000-0000-0000-0000-000000000001', 'HN-HK-001', 'Mộc Miên Coffee Hoàn Kiếm',
-     '90000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000001',
-     '38 Hàng Bông, phường Hàng Bông, quận Hoàn Kiếm, Hà Nội', '02439361268', 'hoankiem@mocmien.local',
-     'ACTIVE', current_date - interval '870 days', NULL, current_date - interval '900 days', current_date - interval '870 days'),
-    ('92000000-0000-0000-0000-000000000002', 'HN-CG-002', 'Mộc Miên Coffee Cầu Giấy',
-     '90000000-0000-0000-0000-000000000004', '91000000-0000-0000-0000-000000000002',
-     '126 Trần Thái Tông, phường Dịch Vọng Hậu, quận Cầu Giấy, Hà Nội', '02437681226', 'caugiay@mocmien.local',
-     'ACTIVE', current_date - interval '750 days', NULL, current_date - interval '780 days', current_date - interval '750 days'),
-    ('92000000-0000-0000-0000-000000000003', 'HN-HBT-003', 'Mộc Miên Coffee Bạch Mai',
-     '90000000-0000-0000-0000-000000000005', '91000000-0000-0000-0000-000000000003',
-     '215 Bạch Mai, phường Cầu Dền, quận Hai Bà Trưng, Hà Nội', '02436281125', 'bachmai@mocmien.local',
-     'ACTIVE', current_date - interval '630 days', NULL, current_date - interval '660 days', current_date - interval '630 days'),
-    ('92000000-0000-0000-0000-000000000004', 'DN-HC-004', 'Mộc Miên Coffee Hải Châu',
-     '90000000-0000-0000-0000-000000000006', '91000000-0000-0000-0000-000000000004',
-     '84 Nguyễn Văn Linh, phường Nam Dương, quận Hải Châu, Đà Nẵng', '02363561284', 'haichau@mocmien.local',
-     'ACTIVE', current_date - interval '510 days', NULL, current_date - interval '540 days', current_date - interval '510 days'),
-    ('92000000-0000-0000-0000-000000000005', 'HCM-SG-005', 'Mộc Miên Coffee Nguyễn Huệ',
-     '90000000-0000-0000-0000-000000000007', '91000000-0000-0000-0000-000000000005',
-     '112 Nguyễn Huệ, phường Sài Gòn, Thành phố Hồ Chí Minh', '02838221112', 'nguyenhue@mocmien.local',
-     'ACTIVE', current_date - interval '390 days', NULL, current_date - interval '420 days', current_date - interval '390 days'),
-    ('92000000-0000-0000-0000-000000000006', 'HCM-TD-006', 'Mộc Miên Coffee Thảo Điền',
-     '90000000-0000-0000-0000-000000000008', '91000000-0000-0000-0000-000000000006',
-     '46 Xuân Thủy, phường Thảo Điền, thành phố Thủ Đức, Thành phố Hồ Chí Minh', '02837441246', 'thaodien@mocmien.local',
-     'ACTIVE', current_date - interval '330 days', NULL, current_date - interval '360 days', current_date - interval '330 days'),
-    ('92000000-0000-0000-0000-000000000007', 'QN-HL-007', 'Mộc Miên Coffee Hạ Long',
-     '90000000-0000-0000-0000-000000000009', '91000000-0000-0000-0000-000000000007',
-     '128 đường Hạ Long, phường Bãi Cháy, thành phố Hạ Long, Quảng Ninh', '02033841228', 'halong@mocmien.local',
-     'INACTIVE', NULL, NULL, current_date - interval '60 days', current_date - interval '5 days'),
-    ('92000000-0000-0000-0000-000000000008', 'CT-NK-008', 'Mộc Miên Coffee Ninh Kiều',
-     '90000000-0000-0000-0000-000000000009', '91000000-0000-0000-0000-000000000008',
-     '72 Hai Bà Trưng, phường Tân An, quận Ninh Kiều, Cần Thơ', '02923811272', 'ninhkieu@mocmien.local',
-     'SUSPENDED', current_date - interval '270 days', NULL, current_date - interval '300 days', current_date - interval '12 days')
-ON CONFLICT (id) DO UPDATE SET
-    code = EXCLUDED.code, name = EXCLUDED.name, owner_id = EXCLUDED.owner_id,
-    application_id = EXCLUDED.application_id, address = EXCLUDED.address,
-    phone = EXCLUDED.phone, email = EXCLUDED.email, status = EXCLUDED.status,
-    activated_at = EXCLUDED.activated_at, closed_at = EXCLUDED.closed_at,
-    updated_at = EXCLUDED.updated_at, deleted_at = NULL;
+INSERT INTO app.stores (code, name, owner_id, application_id, address, phone, email,
+                        status, activated_at, created_at, updated_at)
+SELECT s.code, s.name, u.id, fa.id, s.address, s.phone, s.store_email,
+       s.status, now() - make_interval(days => s.opened_days_ago),
+       now() - make_interval(days => s.opened_days_ago),
+       now() - make_interval(days => coalesce(s.suspended_days_ago, s.opened_days_ago))
+FROM seed_store s
+JOIN app.users u ON u.email = s.owner_email
+JOIN app.franchise_applications fa ON fa.applicant_id = u.id AND fa.proposed_store_name = s.name;
 
 INSERT INTO app.contracts (
-    id, contract_no, store_id, signed_date, effective_from, effective_to,
-    royalty_rate, initial_franchise_fee, deposit_amount, system_fee,
-    service_fee, status, created_at, updated_at
+    contract_no, application_id, store_id, store_code, store_name, store_address,
+    store_phone, store_email, signed_date, effective_from, effective_to,
+    royalty_rate, initial_franchise_fee, deposit_amount, system_fee, service_fee,
+    status, created_at, updated_at
 )
-SELECT
-    ('93000000-0000-0000-0000-' || lpad(store_no::text, 12, '0'))::uuid,
-    contract_no,
-    ('92000000-0000-0000-0000-' || lpad(store_no::text, 12, '0'))::uuid,
-    signed_date, effective_from, effective_to, royalty_rate,
-    initial_fee, deposit, system_fee, service_fee, status,
-    signed_date::timestamptz - interval '7 days', signed_date::timestamptz
-FROM (VALUES
-    (1, 'FRC-2024-HN-HK-001', current_date - 880, current_date - 870, current_date + 590, 5.0, 180000000, 50000000, 1500000, 2500000, 'ACTIVE'),
-    (2, 'FRC-2024-HN-CG-002', current_date - 760, current_date - 750, current_date + 710, 5.0, 180000000, 50000000, 1500000, 2500000, 'ACTIVE'),
-    (3, 'FRC-2025-HN-HBT-003', current_date - 640, current_date - 630, current_date + 830, 5.5, 165000000, 45000000, 1500000, 2200000, 'ACTIVE'),
-    (4, 'FRC-2025-DN-HC-004', current_date - 520, current_date - 510, current_date + 950, 5.0, 175000000, 50000000, 1400000, 2300000, 'ACTIVE'),
-    (5, 'FRC-2025-HCM-SG-005', current_date - 400, current_date - 390, current_date + 1070, 6.0, 220000000, 70000000, 1800000, 3000000, 'ACTIVE'),
-    (6, 'FRC-2025-HCM-TD-006', current_date - 340, current_date - 330, current_date + 1130, 5.5, 200000000, 60000000, 1700000, 2800000, 'ACTIVE'),
-    (7, 'FRC-2026-QN-HL-007', current_date - 20, current_date + 20, current_date + 1480, 5.0, 185000000, 55000000, 1500000, 2500000, 'DRAFT'),
-    (8, 'FRC-2025-CT-NK-008', current_date - 280, current_date - 270, current_date + 1190, 5.0, 175000000, 50000000, 1400000, 2300000, 'ACTIVE')
-) AS c(store_no, contract_no, signed_date, effective_from, effective_to,
-       royalty_rate, initial_fee, deposit, system_fee, service_fee, status)
-ON CONFLICT (id) DO UPDATE SET
-    contract_no = EXCLUDED.contract_no, signed_date = EXCLUDED.signed_date,
-    effective_from = EXCLUDED.effective_from, effective_to = EXCLUDED.effective_to,
-    royalty_rate = EXCLUDED.royalty_rate,
-    initial_franchise_fee = EXCLUDED.initial_franchise_fee,
-    deposit_amount = EXCLUDED.deposit_amount, system_fee = EXCLUDED.system_fee,
-    service_fee = EXCLUDED.service_fee, status = EXCLUDED.status,
-    updated_at = EXCLUDED.updated_at;
+SELECT 'HĐNQ-' || to_char(st.activated_at, 'YYYY') || '-' || lpad(s.no::text, 3, '0'),
+       st.application_id, st.id, s.code, s.name, s.address, s.phone, s.store_email,
+       (st.activated_at - interval '3 days')::date, st.activated_at::date,
+       (st.activated_at + interval '5 years')::date,
+       s.royalty, s.initial_fee, s.deposit, s.system_fee, s.service_fee, 'ACTIVE',
+       st.activated_at - interval '12 days', st.activated_at
+FROM seed_store s JOIN app.stores st ON st.code = s.code;
 
+-- Hồ sơ Hạ Long: hợp đồng đã ký, cửa hàng đã được tạo tự động và đang chuẩn bị
+-- khai trương (chưa hoạt động); chờ thu tối thiểu 20% phí ban đầu để kích hoạt.
+UPDATE app.users SET roles = '{STORE_OWNER}' WHERE email = 'bui.khanh.linh@franchise.local';
+UPDATE app.franchise_applications fa SET converted_at = now() - interval '6 days'
+FROM app.users u WHERE u.id = fa.applicant_id AND u.email = 'bui.khanh.linh@franchise.local';
+INSERT INTO app.stores (code, name, owner_id, application_id, address, phone, email, status, created_at, updated_at)
+SELECT 'CH0016', fa.proposed_store_name, fa.applicant_id, fa.id, fa.proposed_address,
+       fa.phone, fa.email, 'INACTIVE', now() - interval '6 days', now() - interval '6 days'
+FROM app.franchise_applications fa JOIN app.users u ON u.id = fa.applicant_id
+WHERE u.email = 'bui.khanh.linh@franchise.local';
+INSERT INTO app.contracts (
+    contract_no, application_id, store_id, store_code, store_name, store_address, store_phone,
+    store_email, signed_date, effective_from, effective_to, royalty_rate,
+    initial_franchise_fee, deposit_amount, system_fee, service_fee, status, created_at
+)
+SELECT 'HĐNQ-' || to_char(current_date, 'YYYY') || '-016', st.application_id, st.id, st.code,
+       st.name, st.address, st.phone, st.email,
+       current_date - 2, current_date + 14, (current_date + 14 + interval '5 years')::date,
+       5.0, 185000000, 55000000, 1500000, 2500000, 'DRAFT', now() - interval '6 days'
+FROM app.stores st WHERE st.code = 'CH0016';
+SELECT setval('app.store_code_seq', 16);
+
+-- Khoản thu theo hợp đồng: phí ban đầu (30% khi ký, 70% trước khai trương) và tiền cọc
 INSERT INTO app.contract_financial_transactions (
-    id, contract_id, transaction_type, amount, transaction_date,
-    reference_no, note, recorded_by
+    contract_id, transaction_type, amount, transaction_date, reference_no, note, recorded_by, created_at
 )
-SELECT
-    md5('contract-payment:' || c.id::text || ':' || tx.transaction_type)::uuid,
-    c.id, tx.transaction_type,
-    CASE tx.transaction_type WHEN 'INITIAL_FEE_PAYMENT'
-         THEN c.initial_franchise_fee ELSE c.deposit_amount END,
-    c.signed_date,
-    'UNC-' || replace(c.contract_no, 'FRC-', '') || '-' || tx.reference_suffix,
-    CASE tx.transaction_type WHEN 'INITIAL_FEE_PAYMENT'
-         THEN 'Thanh toán phí nhượng quyền ban đầu'
-         ELSE 'Ký quỹ bảo đảm thực hiện hợp đồng' END,
-    '90000000-0000-0000-0000-000000000003'
+SELECT c.id, t.kind, round(c.initial_franchise_fee * t.share), c.signed_date + t.offset_days,
+       'VCB' || to_char(c.signed_date + t.offset_days, 'YYMMDD') || replace(c.store_code, '-', '') || t.offset_days,
+       t.note, a.id, (c.signed_date + t.offset_days)::timestamptz + interval '10 hours'
 FROM app.contracts c
-CROSS JOIN (VALUES ('INITIAL_FEE_PAYMENT', 'PNT'), ('DEPOSIT_PAYMENT', 'DEP'))
-    AS tx(transaction_type, reference_suffix)
-WHERE c.id IN (
-    SELECT ('93000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
-    FROM generate_series(1, 6) n
+CROSS JOIN (VALUES
+    ('INITIAL_FEE_PAYMENT', 0.30, 0, 'Đợt 1 phí nhượng quyền ban đầu (30%)'),
+    ('INITIAL_FEE_PAYMENT', 0.70, 2, 'Đợt 2 phí nhượng quyền ban đầu (70%)')
+) AS t(kind, share, offset_days, note)
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a
+WHERE c.status = 'ACTIVE';
+INSERT INTO app.contract_financial_transactions (
+    contract_id, transaction_type, amount, transaction_date, reference_no, note, recorded_by, created_at
 )
-ON CONFLICT (id) DO UPDATE SET
-    amount = EXCLUDED.amount, transaction_date = EXCLUDED.transaction_date,
-    reference_no = EXCLUDED.reference_no, note = EXCLUDED.note;
+SELECT c.id, 'DEPOSIT_PAYMENT', c.deposit_amount, c.signed_date,
+       'VCB' || to_char(c.signed_date, 'YYMMDD') || 'COC' || replace(c.store_code, '-', ''),
+       'Tiền ký quỹ bảo đảm thực hiện hợp đồng', a.id, c.signed_date::timestamptz + interval '11 hours'
+FROM app.contracts c
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a
+WHERE c.status = 'ACTIVE';
 
 -- ---------------------------------------------------------------------------
--- 4. Chương trình khuyến mãi
+-- 5. Khuyến mãi (thương hiệu chịu 100% chi phí)
 -- ---------------------------------------------------------------------------
-INSERT INTO app.promotions (
-    id, name, description, discount_type, discount_value,
-    start_date, end_date, scope, funding_type,
-    brand_share_percent, store_share_percent, status, created_by,
-    created_at, updated_at
-)
-VALUES
-    ('94000000-0000-0000-0000-000000000001', 'Trung thu đoàn viên 2026',
-     'Giảm 15% cho hóa đơn đồ uống từ 150.000 đồng trong dịp Trung thu.',
-     'PERCENTAGE', 15, current_date - 10, current_date + 10,
-     'ALL_STORES', 'SHARED', 60, 40, 'ACTIVE',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '25 days', current_date - interval '10 days'),
-    ('94000000-0000-0000-0000-000000000002', 'Cà phê sáng - Năng lượng mới',
-     'Giảm 20.000 đồng cho combo bánh và cà phê trước 09:30.',
-     'FIXED_AMOUNT', 20000, current_date + 15, current_date + 45,
-     'ALL_STORES', 'BRAND', 100, 0, 'DRAFT',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '4 days', current_date - interval '4 days'),
-    ('94000000-0000-0000-0000-000000000003', 'Hè rực rỡ 2026',
-     'Ưu đãi 10% cho nhóm khách từ bốn người trong mùa du lịch hè.',
-     'PERCENTAGE', 10, current_date - 100, current_date - 40,
-     'ALL_STORES', 'SHARED', 50, 50, 'EXPIRED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '120 days', current_date - interval '40 days'),
-    ('94000000-0000-0000-0000-000000000004', 'Cuối tuần Sài Gòn',
-     'Giảm 12% tại hai cửa hàng khu vực Thành phố Hồ Chí Minh.',
-     'PERCENTAGE', 12, current_date - 7, current_date + 30,
-     'SELECTED_STORES', 'STORE', 0, 100, 'ACTIVE',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '18 days', current_date - interval '7 days'),
-    ('94000000-0000-0000-0000-000000000005', 'Đồng giá thức uống mùa mưa',
-     'Chương trình dự kiến triển khai nhưng đã hủy do thay đổi kế hoạch sản phẩm.',
-     'FIXED_AMOUNT', 25000, current_date - 25, current_date + 5,
-     'ALL_STORES', 'BRAND', 100, 0, 'CANCELLED',
-     '90000000-0000-0000-0000-000000000001', current_date - interval '40 days', current_date - interval '25 days')
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name, description = EXCLUDED.description,
-    discount_type = EXCLUDED.discount_type, discount_value = EXCLUDED.discount_value,
-    start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date,
-    scope = EXCLUDED.scope, funding_type = EXCLUDED.funding_type,
-    brand_share_percent = EXCLUDED.brand_share_percent,
-    store_share_percent = EXCLUDED.store_share_percent, status = EXCLUDED.status,
-    updated_at = EXCLUDED.updated_at, deleted_at = NULL;
+CREATE TEMP TABLE seed_promo (
+    name text, description text, discount_type text, discount_value numeric,
+    start_offset int, end_offset int, scope text, status text,
+    discount_share numeric, store_code text
+) ON COMMIT DROP;
+INSERT INTO seed_promo VALUES
+ ('Chào hè sảng khoái','Giảm 10% toàn bộ đồ uống đá xay và trà trái cây.','PERCENTAGE',10,-170,-140,'ALL_STORES','EXPIRED',0.045,NULL),
+ ('Mùa tựu trường','Giảm 15% cho học sinh, sinh viên khi xuất trình thẻ.','PERCENTAGE',15,-95,-81,'ALL_STORES','EXPIRED',0.035,NULL),
+ ('Khai trương Long Biên','Giảm 20% mọi hóa đơn trong hai tuần khai trương.','PERCENTAGE',20,-45,-31,'SELECTED_STORES','EXPIRED',0.120,'CH0015'),
+ ('Thu vàng ưu đãi','Mua 2 ly cà phê sữa đá tặng 1 bánh croissant.','FIXED_AMOUNT',25000,-55,-38,'ALL_STORES','EXPIRED',0.030,NULL),
+ ('Đồng giá mùa mưa','Đồng giá 29.000 đồng cho trà nóng, đã hủy do thay đổi thực đơn.','FIXED_AMOUNT',29000,-30,-10,'ALL_STORES','CANCELLED',0,NULL),
+ ('Tuần lễ khách hàng thân thiết','Giảm 20.000 đồng cho hóa đơn từ 150.000 đồng với thành viên Mộc Miên Rewards.','FIXED_AMOUNT',20000,-6,8,'ALL_STORES','ACTIVE',0.055,NULL),
+ ('Cuối năm rộn ràng','Giảm 12% combo bánh và đồ uống dịp cuối năm.','PERCENTAGE',12,10,40,'ALL_STORES','DRAFT',0,NULL);
+
+INSERT INTO app.promotions (name, description, discount_type, discount_value, start_date,
+                            end_date, scope, status, created_by, created_at, updated_at)
+SELECT p.name, p.description, p.discount_type, p.discount_value,
+       current_date + p.start_offset, current_date + p.end_offset, p.scope, p.status, a.id,
+       now() + make_interval(days => p.start_offset - 10), now() + make_interval(days => least(p.end_offset, 0))
+FROM seed_promo p
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a;
 
 INSERT INTO app.promotion_stores (promotion_id, store_id)
-VALUES
-    ('94000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000005'),
-    ('94000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000006')
-ON CONFLICT DO NOTHING;
+SELECT pr.id, st.id
+FROM seed_promo p
+JOIN app.promotions pr ON pr.name = p.name
+JOIN app.stores st ON st.code = p.store_code
+WHERE p.scope = 'SELECTED_STORES';
 
 -- ---------------------------------------------------------------------------
--- 5. Doanh thu: 2.520 bản ghi theo ngày cho sáu cửa hàng đang hoạt động
+-- 6. Doanh thu hằng ngày: tối đa 210 ngày gần nhất, theo mùa và thứ trong tuần
 -- ---------------------------------------------------------------------------
-WITH store_seed AS (
-    SELECT n AS store_no,
-        ('92000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid AS store_id,
-        CASE n
-            WHEN 1 THEN '90000000-0000-0000-0000-000000000002'::uuid
-            WHEN 2 THEN '90000000-0000-0000-0000-000000000004'::uuid
-            WHEN 3 THEN '90000000-0000-0000-0000-000000000005'::uuid
-            WHEN 4 THEN '90000000-0000-0000-0000-000000000006'::uuid
-            WHEN 5 THEN '90000000-0000-0000-0000-000000000007'::uuid
-            WHEN 6 THEN '90000000-0000-0000-0000-000000000008'::uuid
-        END AS owner_id
-    FROM generate_series(1, 6) n
-), revenue_seed AS (
-    SELECT s.store_no, s.store_id, s.owner_id, d.day::date AS business_date,
-        round(7200000 + s.store_no * 1350000
-            + extract(dow FROM d.day) * 310000
-            + (extract(doy FROM d.day)::integer % 19) * 95000
-            + CASE WHEN extract(isodow FROM d.day) IN (6, 7) THEN 2450000 ELSE 0 END
-            + CASE WHEN extract(month FROM d.day) IN (1, 2, 6, 7, 12) THEN 1150000 ELSE 0 END
-        )::numeric(18, 0) AS gross_revenue
-    FROM store_seed s
-    CROSS JOIN generate_series(current_date - interval '420 days',
-        current_date - interval '1 day', interval '1 day') AS d(day)
-)
+CREATE TEMP TABLE seed_revenue ON COMMIT DROP AS
+SELECT st.id AS store_id, st.code, st.owner_id, d::date AS business_date,
+       (current_date - d::date) AS days_ago,
+       round(s.base_daily
+           * CASE extract(isodow FROM d) WHEN 1 THEN 0.90 WHEN 2 THEN 0.92 WHEN 3 THEN 0.95
+                 WHEN 4 THEN 1.00 WHEN 5 THEN 1.12 WHEN 6 THEN 1.32 ELSE 1.27 END
+           * CASE WHEN extract(month FROM d) IN (11, 12) THEN 1.08
+                  WHEN extract(month FROM d) IN (6, 7, 8) AND s.code IN ('CH0013', 'CH0007', 'CH0014') THEN 1.18
+                  WHEN extract(month FROM d) IN (6, 7, 8) THEN 1.04 ELSE 1.00 END
+           * CASE WHEN d::date < st.activated_at::date + 30 THEN 1.15 ELSE 1.00 END
+           * (0.90 + random() * 0.20) / 1000) * 1000 AS gross
+FROM seed_store s
+JOIN app.stores st ON st.code = s.code
+CROSS JOIN LATERAL generate_series(
+    greatest(st.activated_at::date, current_date - 210),
+    current_date - 1 - coalesce(s.suspended_days_ago, 0), interval '1 day') AS d
+-- Nha Trang chưa nộp doanh thu hôm qua (minh họa cảnh báo chậm báo cáo)
+WHERE NOT (s.code = 'CH0013' AND d::date = current_date - 1);
+
 INSERT INTO app.revenues (
-    id, store_id, business_date, gross_revenue, promotion_discount,
-    status, reported_by, reported_at, reviewed_by, reviewed_at, note,
-    created_at, updated_at
+    store_id, business_date, gross_revenue, promotion_discount, status, reported_by,
+    reported_at, reviewed_by, reviewed_at, review_note, adjustment_requested_by,
+    adjustment_requested_at, adjustment_reason, version, note, created_at, updated_at
 )
-SELECT
-    md5('revenue:' || store_id::text || ':' || business_date::text)::uuid,
-    store_id, business_date, gross_revenue,
-    CASE WHEN extract(isodow FROM business_date) IN (5, 6, 7)
-         THEN round(gross_revenue * 0.035) ELSE 0 END,
-    'APPROVED', owner_id,
-    business_date::timestamptz + interval '1 day 8 hours',
-    '90000000-0000-0000-0000-000000000003',
-    business_date::timestamptz + interval '1 day 10 hours',
-    CASE WHEN extract(isodow FROM business_date) IN (6, 7)
-         THEN 'Doanh thu cuối tuần đã đối soát với hệ thống bán hàng.'
-         ELSE 'Doanh thu ngày đã đối soát.' END,
-    business_date::timestamptz + interval '1 day 8 hours',
-    business_date::timestamptz + interval '1 day 10 hours'
-FROM revenue_seed
-ON CONFLICT (store_id, business_date) DO UPDATE SET
-    gross_revenue = EXCLUDED.gross_revenue,
-    promotion_discount = EXCLUDED.promotion_discount,
-    status = EXCLUDED.status, reported_by = EXCLUDED.reported_by,
-    reported_at = EXCLUDED.reported_at, reviewed_by = EXCLUDED.reviewed_by,
-    reviewed_at = EXCLUDED.reviewed_at, note = EXCLUDED.note,
-    updated_at = EXCLUDED.updated_at;
+SELECT r.store_id, r.business_date, r.gross,
+       coalesce(round(r.gross * pm.discount_share / 1000) * 1000, 0),
+       x.status, r.owner_id,
+       CASE WHEN x.status <> 'DRAFT' THEN r.business_date + interval '1 day 21 hours' END,
+       CASE WHEN x.status IN ('APPROVED', 'REJECTED', 'ADJUSTMENT_REQUESTED') THEN acc.id END,
+       CASE WHEN x.status IN ('APPROVED', 'REJECTED', 'ADJUSTMENT_REQUESTED') THEN r.business_date + interval '2 days 9 hours 30 minutes' END,
+       CASE WHEN x.status = 'REJECTED' THEN 'Doanh thu chênh lệch so với báo cáo chốt ca trên POS, vui lòng kiểm tra lại ca tối.' END,
+       CASE WHEN x.status = 'ADJUSTMENT_REQUESTED' THEN acc.id END,
+       CASE WHEN x.status = 'ADJUSTMENT_REQUESTED' THEN r.business_date + interval '3 days 14 hours' END,
+       CASE WHEN x.status = 'ADJUSTMENT_REQUESTED' THEN 'Thiếu doanh thu đơn giao hàng qua ứng dụng, cần bổ sung.' END,
+       CASE WHEN r.code = 'CH0005' AND r.days_ago = 20 THEN 2 ELSE 1 END,
+       CASE WHEN r.code = 'CH0005' AND r.days_ago = 20 THEN 'Đã điều chỉnh theo yêu cầu kế toán (bổ sung đơn GrabFood).' END,
+       r.business_date + interval '1 day 21 hours', r.business_date + interval '2 days 9 hours 30 minutes'
+FROM seed_revenue r
+CROSS JOIN LATERAL (
+    SELECT CASE
+        WHEN r.code = 'CH0009' AND r.days_ago = 4 THEN 'REJECTED'
+        WHEN r.code = 'CH0003' AND r.days_ago = 6 THEN 'ADJUSTMENT_REQUESTED'
+        WHEN r.days_ago >= 3 THEN 'APPROVED'
+        WHEN r.days_ago = 2 AND r.code IN ('CH0001', 'CH0002', 'CH0008') THEN 'APPROVED'
+        WHEN r.days_ago = 2 THEN 'SUBMITTED'
+        WHEN right(r.code, 1)::int % 2 = 0 THEN 'SUBMITTED'
+        ELSE 'DRAFT' END AS status
+) x
+LEFT JOIN LATERAL (
+    SELECT p.discount_share, p.name
+    FROM seed_promo p
+    WHERE p.status IN ('ACTIVE', 'EXPIRED') AND p.discount_share > 0
+      AND r.business_date BETWEEN current_date + p.start_offset AND current_date + p.end_offset
+      AND (p.scope = 'ALL_STORES' OR p.store_code = r.code)
+    ORDER BY p.discount_share DESC LIMIT 1
+) pm ON true
+CROSS JOIN LATERAL (
+    SELECT id FROM app.users
+    WHERE email = CASE WHEN extract(day FROM r.business_date)::int % 3 = 0
+                       THEN 'ketoan.minh@franchise.local' ELSE 'accountant@franchise.local' END
+) acc;
 
-UPDATE app.revenues
-SET status = 'SUBMITTED', reviewed_by = NULL, reviewed_at = NULL,
-    review_note = NULL, updated_at = now()
-WHERE store_id = '92000000-0000-0000-0000-000000000001'
-  AND business_date = current_date - 1;
-
-UPDATE app.revenues
-SET status = 'ADJUSTMENT_REQUESTED',
-    adjustment_requested_by = '90000000-0000-0000-0000-000000000003',
-    adjustment_requested_at = now() - interval '2 hours',
-    adjustment_reason = 'Vui lòng bổ sung doanh thu từ đơn hàng giao qua ứng dụng.',
-    reviewed_by = NULL, reviewed_at = NULL, updated_at = now()
-WHERE store_id = '92000000-0000-0000-0000-000000000002'
-  AND business_date = current_date - 1;
-
-UPDATE app.revenues
-SET status = 'DRAFT', reported_at = NULL, reviewed_by = NULL,
-    reviewed_at = NULL, review_note = NULL, updated_at = now()
-WHERE store_id = '92000000-0000-0000-0000-000000000003'
-  AND business_date = current_date - 1;
-
-UPDATE app.revenues
-SET status = 'REJECTED', reviewed_by = '90000000-0000-0000-0000-000000000003',
-    reviewed_at = now() - interval '1 day',
-    review_note = 'Số tiền không khớp báo cáo chốt ca, cần kiểm tra lại.',
-    updated_at = now()
-WHERE store_id = '92000000-0000-0000-0000-000000000004'
-  AND business_date = current_date - 2;
-
-INSERT INTO app.revenue_promotion_details (
-    id, revenue_id, promotion_id, discount_amount,
-    brand_share_percent, store_share_percent,
-    brand_support_amount, store_cost_amount, promotion_name_snapshot
-)
-SELECT
-    md5('revenue-promotion:' || r.id::text || ':94000000-0000-0000-0000-000000000001')::uuid,
-    r.id, '94000000-0000-0000-0000-000000000001', r.promotion_discount,
-    60, 40, round(r.promotion_discount * 0.60),
-    r.promotion_discount - round(r.promotion_discount * 0.60),
-    'Trung thu đoàn viên 2026'
-FROM app.revenues r
-WHERE r.store_id IN (
-    SELECT ('92000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
-    FROM generate_series(1, 6) n
-)
-  AND r.business_date BETWEEN current_date - 10 AND current_date - 1
-  AND r.promotion_discount > 0
-ON CONFLICT (revenue_id, promotion_id) DO UPDATE SET
-    discount_amount = EXCLUDED.discount_amount,
-    brand_support_amount = EXCLUDED.brand_support_amount,
-    store_cost_amount = EXCLUDED.store_cost_amount,
-    promotion_name_snapshot = EXCLUDED.promotion_name_snapshot;
-
-INSERT INTO app.revenue_versions (
-    revenue_id, version, snapshot, change_reason, changed_by
-)
-SELECT r.id, 1,
-    jsonb_build_object('business_date', r.business_date,
-        'gross_revenue', r.gross_revenue,
-        'promotion_discount', r.promotion_discount, 'status', r.status),
-    'Khởi tạo dữ liệu doanh thu đã đối soát', r.reported_by
-FROM app.revenues r
-WHERE r.store_id IN (
-    '92000000-0000-0000-0000-000000000001',
-    '92000000-0000-0000-0000-000000000002',
-    '92000000-0000-0000-0000-000000000003',
-    '92000000-0000-0000-0000-000000000004'
-)
-  AND r.business_date >= current_date - 7
-ON CONFLICT (revenue_id, version) DO NOTHING;
+INSERT INTO app.revenue_promotion_details (revenue_id, promotion_id, discount_amount, promotion_name_snapshot, created_at)
+SELECT rv.id, pr.id, rv.promotion_discount, pr.name, rv.created_at
+FROM app.revenues rv
+JOIN app.stores st ON st.id = rv.store_id
+JOIN LATERAL (
+    SELECT p.name FROM seed_promo p
+    WHERE p.status IN ('ACTIVE', 'EXPIRED') AND p.discount_share > 0
+      AND rv.business_date BETWEEN current_date + p.start_offset AND current_date + p.end_offset
+      AND (p.scope = 'ALL_STORES' OR p.store_code = st.code)
+    ORDER BY p.discount_share DESC LIMIT 1
+) pm ON true
+JOIN app.promotions pr ON pr.name = pm.name
+WHERE rv.promotion_discount > 0;
 
 -- ---------------------------------------------------------------------------
--- 6. Chốt doanh thu tháng, hóa đơn và thanh toán
+-- 7. Hóa đơn phí nhượng quyền theo tháng (6 tháng gần nhất, tính đúng công thức)
 -- ---------------------------------------------------------------------------
-WITH periods AS (
-    SELECT (date_trunc('month', current_date) - (n || ' month')::interval)::date AS period_month
-    FROM generate_series(1, 4) n
+WITH months AS (
+    SELECT (date_trunc('month', current_date) - make_interval(months => k))::date AS period_month, k
+    FROM generate_series(1, 6) k
 ), totals AS (
-    SELECT r.store_id, p.period_month,
-        sum(r.gross_revenue)::numeric(18, 0) AS gross,
-        sum(r.promotion_discount)::numeric(18, 0) AS discount,
-        sum(r.net_revenue)::numeric(18, 0) AS net,
-        round(sum(r.promotion_discount) * 0.45)::numeric(18, 0) AS brand_support
-    FROM periods p
-    JOIN app.revenues r ON r.business_date >= p.period_month
-        AND r.business_date < p.period_month + interval '1 month'
-        AND r.status = 'APPROVED'
-    WHERE r.store_id IN (
-        SELECT ('92000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
-        FROM generate_series(1, 6) n
-    )
-    GROUP BY r.store_id, p.period_month
-)
-INSERT INTO app.monthly_closes (
-    id, store_id, period_month, monthly_gross_revenue,
-    monthly_promotion_discount, monthly_net_revenue,
-    brand_promotion_support, closed_by, closed_at
-)
-SELECT md5('monthly-close:' || store_id::text || ':' || period_month::text)::uuid,
-    store_id, period_month, gross, discount, net, brand_support,
-    '90000000-0000-0000-0000-000000000003',
-    (period_month + interval '1 month 2 days 9 hours')::timestamptz
-FROM totals
-ON CONFLICT (store_id, period_month) DO UPDATE SET
-    monthly_gross_revenue = EXCLUDED.monthly_gross_revenue,
-    monthly_promotion_discount = EXCLUDED.monthly_promotion_discount,
-    monthly_net_revenue = EXCLUDED.monthly_net_revenue,
-    brand_promotion_support = EXCLUDED.brand_promotion_support,
-    closed_by = EXCLUDED.closed_by, closed_at = EXCLUDED.closed_at;
-
-WITH invoice_base AS (
-    SELECT mc.*, s.code AS store_code, c.id AS contract_id,
-        c.royalty_rate, c.system_fee, c.service_fee,
-        ((date_part('year', age(date_trunc('month', current_date), mc.period_month)) * 12)
-          + date_part('month', age(date_trunc('month', current_date), mc.period_month)))::integer AS months_ago,
-        round(mc.monthly_net_revenue * c.royalty_rate / 100)::numeric(18, 0) AS royalty_fee
-    FROM app.monthly_closes mc
-    JOIN app.stores s ON s.id = mc.store_id
-    JOIN app.contracts c ON c.store_id = mc.store_id AND c.status = 'ACTIVE'
-    WHERE mc.period_month >= (date_trunc('month', current_date) - interval '3 months')::date
-), calculated AS (
-    SELECT b.*,
-        (b.royalty_fee + b.system_fee + b.service_fee)::numeric(18, 0) AS fee_subtotal,
-        greatest(b.royalty_fee + b.system_fee + b.service_fee
-            - b.brand_promotion_support, 0)::numeric(18, 0) AS taxable_amount
-    FROM invoice_base b
-), finalized AS (
-    SELECT c.*, round(c.taxable_amount * 0.10)::numeric(18, 0) AS vat_amount,
-        (c.taxable_amount + round(c.taxable_amount * 0.10))::numeric(18, 0) AS invoice_total,
-        CASE
-            WHEN c.months_ago = 3 THEN 'PAID'
-            WHEN c.months_ago = 2 AND right(c.store_code, 1)::integer % 2 = 0 THEN 'PAID'
-            WHEN c.months_ago = 2 THEN 'PARTIALLY_PAID'
-            WHEN c.months_ago = 1 AND right(c.store_code, 1)::integer % 2 = 0 THEN 'ISSUED'
-            ELSE 'OVERDUE'
-        END AS invoice_status
-    FROM calculated c
+    SELECT st.id AS store_id, st.code, c.id AS contract_id, c.royalty_rate, c.system_fee,
+           c.service_fee, m.period_month, m.k,
+           sum(rv.gross_revenue) AS gross, sum(rv.promotion_discount) AS discount,
+           sum(rv.net_revenue) AS net
+    FROM months m
+    JOIN app.revenues rv ON rv.business_date >= m.period_month
+        AND rv.business_date < m.period_month + interval '1 month' AND rv.status = 'APPROVED'
+    JOIN app.stores st ON st.id = rv.store_id
+    JOIN app.contracts c ON c.store_id = st.id AND c.status = 'ACTIVE'
+    GROUP BY st.id, st.code, c.id, c.royalty_rate, c.system_fee, c.service_fee, m.period_month, m.k
+), calc AS (
+    SELECT t.*, round(t.gross * t.royalty_rate / 100) AS royalty,
+           round(t.gross * t.royalty_rate / 100) + t.system_fee + t.service_fee AS subtotal
+    FROM totals t
+), fin AS (
+    SELECT c.*, greatest(c.subtotal - c.discount, 0) AS taxable,
+           round(greatest(c.subtotal - c.discount, 0) * 0.10) AS vat,
+           (c.period_month + interval '1 month 3 days 9 hours') AS issued_at,
+           CASE
+               WHEN c.k >= 3 THEN 'PAID'
+               WHEN c.k = 2 AND c.code IN ('CH0005', 'CH0012') THEN 'PARTIAL'
+               WHEN c.k = 2 THEN 'PAID'
+               WHEN c.code IN ('CH0003', 'CH0010') THEN 'PARTIAL'
+               WHEN c.code IN ('CH0006', 'CH0012', 'CH0013') THEN 'UNPAID'
+               ELSE 'PAID' END AS pay_state
+    FROM calc c
 )
 INSERT INTO app.invoices (
-    id, invoice_no, store_id, contract_id, monthly_close_id, period_month,
-    royalty_rate, monthly_gross_revenue, royalty_fee, system_fee, service_fee,
-    initial_fee_installment, positive_adjustments, brand_promotion_support,
-    carried_credit, negative_adjustments, fee_subtotal, deductions,
-    taxable_amount, vat_rate, vat_amount, invoice_total,
-    paid_amount, outstanding_amount, status, issued_at, due_date,
+    invoice_no, store_id, contract_id, period_month, royalty_rate, monthly_gross_revenue,
+    monthly_promotion_discount, monthly_net_revenue, royalty_fee, system_fee, service_fee,
+    brand_promotion_support, fee_subtotal, deductions, taxable_amount, vat_rate, vat_amount,
+    invoice_total, paid_amount, outstanding_amount, status, issued_at, due_date,
     created_by, created_at, updated_at
 )
-SELECT
-    md5('invoice:' || store_id::text || ':' || period_month::text)::uuid,
-    'INV-' || to_char(period_month, 'YYYYMM') || '-' || store_code,
-    store_id, contract_id, id, period_month,
-    royalty_rate, monthly_gross_revenue, royalty_fee, system_fee, service_fee,
-    0, 0, brand_promotion_support, 0, 0,
-    fee_subtotal, brand_promotion_support, taxable_amount, 10, vat_amount, invoice_total,
-    CASE WHEN invoice_status = 'PAID' THEN invoice_total
-         WHEN invoice_status = 'PARTIALLY_PAID' THEN round(invoice_total * 0.55)
-         ELSE 0 END,
-    CASE WHEN invoice_status = 'PAID' THEN 0
-         WHEN invoice_status = 'PARTIALLY_PAID' THEN invoice_total - round(invoice_total * 0.55)
-         ELSE invoice_total END,
-    invoice_status,
-    (period_month + interval '1 month 3 days 9 hours')::timestamptz,
-    (period_month + interval '1 month 15 days')::date,
-    '90000000-0000-0000-0000-000000000003',
-    (period_month + interval '1 month 2 days 9 hours')::timestamptz,
-    (period_month + interval '1 month 3 days 9 hours')::timestamptz
-FROM finalized
-ON CONFLICT (id) DO UPDATE SET
-    monthly_gross_revenue = EXCLUDED.monthly_gross_revenue,
-    royalty_fee = EXCLUDED.royalty_fee, system_fee = EXCLUDED.system_fee,
-    service_fee = EXCLUDED.service_fee,
-    brand_promotion_support = EXCLUDED.brand_promotion_support,
-    fee_subtotal = EXCLUDED.fee_subtotal, deductions = EXCLUDED.deductions,
-    taxable_amount = EXCLUDED.taxable_amount, vat_amount = EXCLUDED.vat_amount,
-    invoice_total = EXCLUDED.invoice_total, paid_amount = EXCLUDED.paid_amount,
-    outstanding_amount = EXCLUDED.outstanding_amount, status = EXCLUDED.status,
-    issued_at = EXCLUDED.issued_at, due_date = EXCLUDED.due_date,
-    updated_at = EXCLUDED.updated_at;
+SELECT 'PNQ-' || to_char(f.period_month, 'YYYYMM') || '-' || f.code, f.store_id, f.contract_id,
+       f.period_month, f.royalty_rate, f.gross, f.discount, f.net, f.royalty, f.system_fee,
+       f.service_fee, f.discount, f.subtotal, f.discount, f.taxable, 10, f.vat,
+       f.taxable + f.vat,
+       CASE f.pay_state WHEN 'PAID' THEN f.taxable + f.vat WHEN 'PARTIAL' THEN round((f.taxable + f.vat) * 0.5) ELSE 0 END,
+       CASE f.pay_state WHEN 'PAID' THEN 0 WHEN 'PARTIAL' THEN (f.taxable + f.vat) - round((f.taxable + f.vat) * 0.5) ELSE f.taxable + f.vat END,
+       CASE WHEN f.pay_state = 'PAID' THEN 'PAID'
+            WHEN (f.issued_at + interval '7 days')::date < current_date THEN 'OVERDUE'
+            WHEN f.pay_state = 'PARTIAL' THEN 'PARTIALLY_PAID' ELSE 'ISSUED' END,
+       f.issued_at, (f.issued_at + interval '7 days')::date,
+       acc.id, f.issued_at - interval '1 day', f.issued_at
+FROM fin f
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'accountant@franchise.local') acc;
 
-INSERT INTO app.invoice_items (id, invoice_id, item_type, description, amount)
-SELECT md5('invoice-item:' || i.id::text || ':' || item.item_type)::uuid,
-    i.id, item.item_type, item.description,
-    CASE item.item_type WHEN 'ROYALTY_FEE' THEN i.royalty_fee
-         WHEN 'SYSTEM_FEE' THEN i.system_fee ELSE i.service_fee END
+-- Thanh toán: trả đủ (một số trả 2 đợt 60/40), trả một phần 50%
+INSERT INTO app.payments (payment_no, invoice_id, amount, payment_date, method, reference_no,
+                          status, recorded_by, created_at)
+SELECT 'TT-' || to_char(i.period_month, 'YYYYMM') || '-' || st.code || '-' || p.seq,
+       i.id, p.amount, p.pay_date,
+       CASE WHEN st.code = 'CH0014' THEN 'CASH' ELSE 'BANK_TRANSFER' END,
+       CASE WHEN st.code = 'CH0014' THEN 'PT' || to_char(p.pay_date, 'YYMMDD') || '-' || p.seq
+            ELSE 'VCB' || to_char(p.pay_date, 'YYMMDD') || replace(st.code, '-', '') || p.seq END,
+       'CONFIRMED', acc.id, p.pay_date::timestamptz + interval '15 hours'
 FROM app.invoices i
-CROSS JOIN (VALUES
-    ('ROYALTY_FEE', 'Phí nhượng quyền theo doanh thu tháng'),
-    ('SYSTEM_FEE', 'Phí sử dụng hệ thống quản lý'),
-    ('SERVICE_FEE', 'Phí hỗ trợ vận hành và marketing')
-) AS item(item_type, description)
-WHERE i.id IN (
-    SELECT md5('invoice:' || mc.store_id::text || ':' || mc.period_month::text)::uuid
-    FROM app.monthly_closes mc
-    WHERE mc.period_month >= (date_trunc('month', current_date) - interval '3 months')::date
-)
-ON CONFLICT (id) DO UPDATE SET
-    description = EXCLUDED.description, amount = EXCLUDED.amount;
+JOIN app.stores st ON st.id = i.store_id
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'accountant@franchise.local') acc
+CROSS JOIN LATERAL (
+    SELECT * FROM (VALUES
+        (1, CASE WHEN i.status = 'PAID' AND right(st.code, 1)::int % 3 = 0
+                 THEN round(i.paid_amount * 0.6) ELSE i.paid_amount END,
+         least((i.issued_at + interval '5 days')::date, current_date - 1)),
+        (2, i.paid_amount - round(i.paid_amount * 0.6),
+         least((i.issued_at + interval '7 days')::date, current_date - 1))
+    ) v(seq, amount, pay_date)
+    WHERE i.paid_amount > 0
+      AND (v.seq = 1 OR (i.status = 'PAID' AND right(st.code, 1)::int % 3 = 0))
+) p
+WHERE p.amount > 0;
 
-INSERT INTO app.payments (
-    id, payment_no, invoice_id, amount, payment_date,
-    method, reference_no, status, recorded_by, created_at
-)
-SELECT md5('payment:' || i.id::text)::uuid,
-    'PAY-' || to_char(i.period_month, 'YYYYMM') || '-' || s.code,
-    i.id, i.paid_amount, LEAST(i.due_date, current_date - 1),
-    'BANK_TRANSFER', 'VCB' || to_char(i.period_month, 'YYMM') || replace(s.code, '-', ''),
-    'CONFIRMED', '90000000-0000-0000-0000-000000000003',
-    LEAST(i.due_date, current_date - 1)::timestamptz + interval '10 hours'
+-- Một thanh toán nhập sai đã bị đảo (Cầu Giấy, tháng trước); khoản đúng đã ghi ở trên
+INSERT INTO app.payments (payment_no, invoice_id, amount, payment_date, method, reference_no,
+                          status, recorded_by, reversed_by, reversed_at, reversal_reason, created_at)
+SELECT 'TT-' || to_char(i.period_month, 'YYYYMM') || '-' || st.code || '-SAI', i.id,
+       round(i.invoice_total / 10.0) * 10, (i.issued_at + interval '4 days')::date, 'BANK_TRANSFER',
+       'VCB' || to_char(i.issued_at + interval '4 days', 'YYMMDD') || 'NHAPSAI', 'REVERSED', acc.id, acc.id,
+       i.issued_at + interval '4 days 16 hours', 'Nhập nhầm số tiền, chứng từ ngân hàng là của cửa hàng khác.',
+       i.issued_at + interval '4 days 15 hours'
 FROM app.invoices i
-JOIN app.stores s ON s.id = i.store_id
-WHERE i.paid_amount > 0
-  AND i.id IN (
-      SELECT md5('invoice:' || mc.store_id::text || ':' || mc.period_month::text)::uuid
-      FROM app.monthly_closes mc
-      WHERE mc.period_month >= (date_trunc('month', current_date) - interval '3 months')::date
-  )
-ON CONFLICT (id) DO UPDATE SET
-    amount = EXCLUDED.amount, payment_date = EXCLUDED.payment_date,
-    method = EXCLUDED.method, reference_no = EXCLUDED.reference_no,
-    status = EXCLUDED.status, reversed_by = NULL,
-    reversed_at = NULL, reversal_reason = NULL;
+JOIN app.stores st ON st.id = i.store_id
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'accountant@franchise.local') acc
+WHERE st.code = 'CH0002' AND i.period_month = (date_trunc('month', current_date) - interval '1 month')::date;
+
+-- Khoản điều chỉnh chờ áp vào hóa đơn tháng này
+INSERT INTO app.billing_adjustments (store_id, source_period, amount, reason, created_by, created_at)
+SELECT st.id, date_trunc('month', current_date)::date, v.amount, v.reason, acc.id, now() - make_interval(days => v.days_ago)
+FROM (VALUES
+    ('CH0008', 1500000, 'Phí đào tạo barista cho 3 nhân viên mới tại trung tâm đào tạo của thương hiệu.', 9),
+    ('CH0009', -800000, 'Giảm trừ phí dịch vụ do hệ thống POS gián đoạn 2 ngày.', 5),
+    ('CH0001', 2200000, 'Phí in ấn bộ nhận diện mới (menu, biển bảng) theo đợt thay đổi thương hiệu.', 3)
+) AS v(code, amount, reason, days_ago)
+JOIN app.stores st ON st.code = v.code
+CROSS JOIN (SELECT id FROM app.users WHERE email = 'accountant@franchise.local') acc;
 
 -- ---------------------------------------------------------------------------
--- 7. Thông báo và nhật ký hoạt động
+-- 8. Thông báo
 -- ---------------------------------------------------------------------------
-INSERT INTO app.notifications (
-    id, user_id, notification_type, title, message,
-    entity_type, entity_id, dedupe_key, read_at, created_at
-)
-VALUES
-    ('96000000-0000-0000-0000-000000000001', '90000000-0000-0000-0000-000000000002',
-     'REVENUE_SUBMITTED', 'Doanh thu đã được tiếp nhận',
-     'Báo cáo doanh thu ngày gần nhất đang chờ kế toán kiểm tra.',
-     'REVENUE', md5('revenue:92000000-0000-0000-0000-000000000001:' || (current_date - 1)::text)::uuid,
-     'SEED:REVENUE:OWNER-001', NULL, now() - interval '5 hours'),
-    ('96000000-0000-0000-0000-000000000002', '90000000-0000-0000-0000-000000000004',
-     'REVENUE_ADJUSTMENT', 'Yêu cầu điều chỉnh doanh thu',
-     'Kế toán yêu cầu bổ sung doanh thu từ đơn hàng giao qua ứng dụng.',
-     'REVENUE', md5('revenue:92000000-0000-0000-0000-000000000002:' || (current_date - 1)::text)::uuid,
-     'SEED:REVENUE:OWNER-002', NULL, now() - interval '2 hours'),
-    ('96000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000007',
-     'INVOICE_OVERDUE', 'Hóa đơn phí nhượng quyền sắp quá hạn',
-     'Vui lòng kiểm tra hóa đơn kỳ gần nhất và hoàn tất thanh toán.',
-     'STORE', '92000000-0000-0000-0000-000000000005',
-     'SEED:INVOICE:OWNER-005', NULL, now() - interval '1 day'),
-    ('96000000-0000-0000-0000-000000000004', '90000000-0000-0000-0000-000000000003',
-     'REVENUE_SUBMITTED', 'Có báo cáo doanh thu chờ duyệt',
-     'Cửa hàng Hoàn Kiếm vừa gửi báo cáo doanh thu ngày gần nhất.',
-     'STORE', '92000000-0000-0000-0000-000000000001',
-     'SEED:ACCOUNTANT:PENDING-REVENUE', NULL, now() - interval '4 hours'),
-    ('96000000-0000-0000-0000-000000000005', '90000000-0000-0000-0000-000000000001',
-     'APPLICATION_SUBMITTED', 'Hồ sơ mới cần thẩm định',
-     'Hồ sơ mở cửa hàng tại thành phố Vinh đang chờ tiếp nhận.',
-     'FRANCHISE_APPLICATION', '91000000-0000-0000-0000-000000000009',
-     'SEED:ADMIN:PENDING-APPLICATION', NULL, now() - interval '3 days'),
-    ('96000000-0000-0000-0000-000000000006', '90000000-0000-0000-0000-000000000008',
-     'PROMOTION_STARTED', 'Khuyến mãi mới đã bắt đầu',
-     'Chương trình Cuối tuần Sài Gòn đã được áp dụng cho cửa hàng Thảo Điền.',
-     'PROMOTION', '94000000-0000-0000-0000-000000000004',
-     'SEED:PROMOTION:OWNER-006', now() - interval '2 days', now() - interval '7 days')
-ON CONFLICT (id) DO UPDATE SET
-    title = EXCLUDED.title, message = EXCLUDED.message,
-    entity_type = EXCLUDED.entity_type, entity_id = EXCLUDED.entity_id,
-    read_at = EXCLUDED.read_at, created_at = EXCLUDED.created_at;
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, read_at, created_at)
+SELECT st.owner_id, 'INVOICE_ISSUED', 'Hóa đơn đã phát hành',
+       'Hóa đơn ' || i.invoice_no || ' đã được phát hành, tổng ' || to_char(i.invoice_total, 'FM999G999G999G999') || ' đ, hạn thanh toán ' || to_char(i.due_date, 'DD/MM/YYYY') || '.',
+       'INVOICE', i.id, 'INVOICE_ISSUED:' || i.id,
+       CASE WHEN i.status = 'PAID' THEN i.issued_at + interval '1 day' END, i.issued_at
+FROM app.invoices i JOIN app.stores st ON st.id = i.store_id
+WHERE i.period_month >= (date_trunc('month', current_date) - interval '2 months')::date;
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, created_at)
+SELECT st.owner_id, 'INVOICE_OVERDUE', 'Hóa đơn quá hạn',
+       'Hóa đơn ' || i.invoice_no || ' đã quá hạn thanh toán, còn nợ ' || to_char(i.outstanding_amount, 'FM999G999G999G999') || ' đ.',
+       'INVOICE', i.id, 'INVOICE_OVERDUE:' || i.id, i.due_date + interval '1 day 8 hours'
+FROM app.invoices i JOIN app.stores st ON st.id = i.store_id
+WHERE i.status = 'OVERDUE';
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, read_at, created_at)
+SELECT st.owner_id, 'PAYMENT_CONFIRMED', 'Đã ghi nhận thanh toán',
+       'Thanh toán ' || p.payment_no || ' số tiền ' || to_char(p.amount, 'FM999G999G999G999') || ' đ đã được ghi nhận.',
+       'PAYMENT', p.id, 'PAYMENT_CONFIRMED:' || p.id, p.created_at + interval '2 hours', p.created_at
+FROM app.payments p JOIN app.invoices i ON i.id = p.invoice_id JOIN app.stores st ON st.id = i.store_id
+WHERE p.status = 'CONFIRMED' AND i.period_month = (date_trunc('month', current_date) - interval '1 month')::date;
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, created_at)
+SELECT st.owner_id,
+       CASE rv.status WHEN 'REJECTED' THEN 'REVENUE_REJECTED' ELSE 'REVENUE_ADJUSTMENT_REQUESTED' END,
+       CASE rv.status WHEN 'REJECTED' THEN 'Doanh thu bị từ chối' ELSE 'Yêu cầu điều chỉnh doanh thu' END,
+       coalesce(rv.review_note, rv.adjustment_reason) || ' (ngày ' || to_char(rv.business_date, 'DD/MM/YYYY') || ')',
+       'REVENUE', rv.id, rv.status || ':' || rv.id, coalesce(rv.adjustment_requested_at, rv.reviewed_at)
+FROM app.revenues rv JOIN app.stores st ON st.id = rv.store_id
+WHERE rv.status IN ('REJECTED', 'ADJUSTMENT_REQUESTED');
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, created_at)
+SELECT st.owner_id, 'REVENUE_OVERDUE', 'Chậm báo cáo doanh thu',
+       'Cửa hàng ' || st.name || ' chưa nộp doanh thu ngày ' || to_char(current_date - 1, 'DD/MM/YYYY') || '.',
+       'STORE', st.id, 'REVENUE_OVERDUE:' || st.id || ':' || (current_date - 1),
+       (current_date - 1) + interval '23 hours'
+FROM app.stores st WHERE st.code = 'CH0013';
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, read_at, created_at)
+SELECT st.owner_id, 'PROMOTION_STARTED', 'Khuyến mãi bắt đầu',
+       'Chương trình "' || pr.name || '" áp dụng từ ' || to_char(pr.start_date, 'DD/MM/YYYY') || ' đến ' || to_char(pr.end_date, 'DD/MM/YYYY') || '. Thương hiệu chịu toàn bộ chi phí giảm giá.',
+       'PROMOTION', pr.id, 'PROMOTION_STARTED:' || pr.id || ':' || st.owner_id,
+       CASE WHEN right(st.code, 1)::int % 2 = 0 THEN pr.start_date + interval '10 hours' END,
+       pr.start_date + interval '8 hours'
+FROM app.promotions pr CROSS JOIN app.stores st
+WHERE pr.status = 'ACTIVE' AND st.status = 'ACTIVE'
+ON CONFLICT (dedupe_key) DO NOTHING;
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, created_at)
+SELECT fa.applicant_id, 'APPLICATION_APPROVED', 'Hồ sơ được duyệt',
+       'Hồ sơ "' || fa.proposed_store_name || '" đã được duyệt. Vui lòng hoàn tất ký hợp đồng và thanh toán phí ban đầu.',
+       'APPLICATION', fa.id, 'APPROVE_APPLICATION:' || fa.id, fa.reviewed_at
+FROM app.franchise_applications fa WHERE fa.status = 'APPROVED' AND fa.converted_at IS NULL;
+
+INSERT INTO app.notifications (user_id, notification_type, title, message, entity_type, entity_id, dedupe_key, read_at, created_at)
+SELECT fa.applicant_id, 'APPLICATION_REJECTED', 'Hồ sơ bị từ chối', fa.review_note,
+       'APPLICATION', fa.id, 'REJECT_APPLICATION:' || fa.id, fa.reviewed_at + interval '1 day', fa.reviewed_at
+FROM app.franchise_applications fa WHERE fa.status = 'REJECTED';
+
+-- ---------------------------------------------------------------------------
+-- 9. Nhật ký thao tác (các sự kiện chính)
+-- ---------------------------------------------------------------------------
+INSERT INTO app.audit_logs (actor_id, action, entity_type, entity_id, new_values, reason, created_at)
+SELECT a.id, e.action, e.entity_type, e.entity_id, e.new_values, e.reason, e.created_at
+FROM (SELECT id FROM app.users WHERE email = 'admin@franchise.local') a
+CROSS JOIN LATERAL (
+    SELECT 'CREATE_CONTRACT' AS action, 'CONTRACT' AS entity_type, c.id AS entity_id,
+           jsonb_build_object('contract_no', c.contract_no, 'store_code', c.store_code, 'status', 'DRAFT') AS new_values,
+           NULL::text AS reason, c.created_at
+    FROM app.contracts c
+    UNION ALL
+    SELECT 'ACTIVATE_CONTRACT', 'CONTRACT', c.id,
+           jsonb_build_object('status', 'ACTIVE', 'store_id', c.store_id),
+           'Đã ký và thu đủ phí nhượng quyền ban đầu', c.updated_at
+    FROM app.contracts c WHERE c.status = 'ACTIVE'
+    UNION ALL
+    SELECT 'CREATE_STORE', 'STORE', st.id,
+           jsonb_build_object('code', st.code, 'status', 'INACTIVE'), 'Tạo cửa hàng tự động khi lập hợp đồng', st.created_at
+    FROM app.stores st
+    UNION ALL
+    SELECT 'CREATE_PROMOTION', 'PROMOTION', pr.id,
+           jsonb_build_object('name', pr.name, 'status', pr.status), NULL, pr.created_at
+    FROM app.promotions pr
+) e;
+
+INSERT INTO app.audit_logs (actor_id, action, entity_type, entity_id, new_values, created_at)
+SELECT i.created_by, 'ISSUE_INVOICE', 'INVOICE', i.id,
+       jsonb_build_object('invoice_no', i.invoice_no, 'total', i.invoice_total), i.issued_at
+FROM app.invoices i;
 
 INSERT INTO app.audit_logs (actor_id, action, entity_type, entity_id, new_values, reason, created_at)
-SELECT seeded.actor_id, seeded.action, seeded.entity_type, seeded.entity_id,
-       seeded.new_values, seeded.reason, seeded.created_at
-FROM (VALUES
-    ('90000000-0000-0000-0000-000000000001'::uuid, 'CREATE_STORE', 'STORE',
-     '92000000-0000-0000-0000-000000000007'::uuid,
-     '{"code":"QN-HL-007","status":"INACTIVE"}'::jsonb,
-     'Tạo cửa hàng từ hồ sơ nhượng quyền đã được duyệt', now() - interval '60 days'),
-    ('90000000-0000-0000-0000-000000000001'::uuid, 'ACTIVATE_CONTRACT', 'CONTRACT',
-     '93000000-0000-0000-0000-000000000006'::uuid,
-     '{"status":"ACTIVE"}'::jsonb,
-     'Đã nhận đủ phí ban đầu và tiền ký quỹ', now() - interval '330 days'),
-    ('90000000-0000-0000-0000-000000000003'::uuid, 'APPROVE_REVENUE', 'REVENUE',
-     md5('revenue:92000000-0000-0000-0000-000000000001:' || (current_date - 2)::text)::uuid,
-     '{"status":"APPROVED"}'::jsonb,
-     'Doanh thu khớp dữ liệu chốt ca', now() - interval '1 day'),
-    ('90000000-0000-0000-0000-000000000003'::uuid, 'ISSUE_INVOICE', 'INVOICE',
-     md5('invoice:92000000-0000-0000-0000-000000000001:' ||
-         (date_trunc('month', current_date) - interval '1 month')::date::text)::uuid,
-     '{"status":"OVERDUE"}'::jsonb,
-     'Phát hành hóa đơn phí nhượng quyền kỳ gần nhất', now() - interval '20 days'),
-    ('90000000-0000-0000-0000-000000000003'::uuid, 'RECORD_PAYMENT', 'PAYMENT',
-     md5('payment:' || md5('invoice:92000000-0000-0000-0000-000000000002:' ||
-         (date_trunc('month', current_date) - interval '2 months')::date::text)::uuid::text)::uuid,
-     '{"status":"CONFIRMED","method":"BANK_TRANSFER"}'::jsonb,
-     'Đã đối chiếu giao dịch ngân hàng', now() - interval '35 days')
-) AS seeded(actor_id, action, entity_type, entity_id, new_values, reason, created_at)
-WHERE NOT EXISTS (
-    SELECT 1 FROM app.audit_logs a
-    WHERE a.action = seeded.action AND a.entity_id = seeded.entity_id
-);
-
-SELECT format(
-    'Seed hoàn tất: %s người dùng, %s hồ sơ, %s cửa hàng, %s hợp đồng, %s doanh thu, %s hóa đơn, %s thanh toán.',
-    (SELECT count(*) FROM app.users WHERE deleted_at IS NULL),
-    (SELECT count(*) FROM app.franchise_applications WHERE deleted_at IS NULL),
-    (SELECT count(*) FROM app.stores WHERE deleted_at IS NULL),
-    (SELECT count(*) FROM app.contracts),
-    (SELECT count(*) FROM app.revenues),
-    (SELECT count(*) FROM app.invoices),
-    (SELECT count(*) FROM app.payments)
-);
+SELECT p.recorded_by, CASE p.status WHEN 'REVERSED' THEN 'REVERSE_PAYMENT' ELSE 'RECORD_PAYMENT' END,
+       'PAYMENT', p.id, jsonb_build_object('payment_no', p.payment_no, 'amount', p.amount),
+       p.reversal_reason, coalesce(p.reversed_at, p.created_at)
+FROM app.payments p;
 
 COMMIT;

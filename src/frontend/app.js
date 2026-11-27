@@ -33,14 +33,14 @@ const resources = {
     eyebrow: "HỢP ĐỒNG",
     path: "/api/v1/contracts",
     statuses: ["DRAFT", "ACTIVE", "EXPIRED", "TERMINATED"],
-    columns: ["contract_no", "store_id", "effective_from", "effective_to", "royalty_rate", "initial_franchise_fee", "status"],
+    columns: ["contract_no", "store_name", "effective_from", "effective_to", "royalty_rate", "initial_franchise_fee", "status"],
   },
   promotions: {
     title: "Khuyến mãi",
     eyebrow: "CHƯƠNG TRÌNH KHUYẾN MÃI",
     path: "/api/v1/promotions",
     statuses: ["DRAFT", "ACTIVE", "CANCELLED", "EXPIRED"],
-    columns: ["name", "discount_type", "discount_value", "start_date", "end_date", "funding_type", "status"],
+    columns: ["name", "discount_type", "discount_value", "start_date", "end_date", "status"],
   },
   revenues: {
     title: "Doanh thu hằng ngày",
@@ -50,11 +50,11 @@ const resources = {
     columns: ["business_date", "store_id", "gross_revenue", "promotion_discount", "net_revenue", "version", "status"],
   },
   invoices: {
-    title: "Hóa đơn phí Franchise",
+    title: "Hóa đơn phí nhượng quyền",
     eyebrow: "HÓA ĐƠN VÀ CÔNG NỢ",
     path: "/api/v1/invoices",
     statuses: ["DRAFT", "ISSUED", "PARTIALLY_PAID", "PAID", "OVERDUE", "CANCELLED"],
-    columns: ["invoice_no", "store_id", "period_month", "invoice_total", "paid_amount", "outstanding_amount", "due_date", "status"],
+    columns: ["invoice_no", "store_id", "period_month", "royalty_fee", "brand_promotion_support", "invoice_total", "paid_amount", "outstanding_amount", "due_date", "status"],
   },
   payments: {
     title: "Thanh toán",
@@ -72,7 +72,7 @@ const resources = {
   },
   audit_logs: {
     title: "Nhật ký hệ thống",
-    eyebrow: "AUDIT LOG",
+    eyebrow: "NHẬT KÝ THAO TÁC",
     path: "/api/v1/audit-logs",
     statuses: [],
     columns: ["action", "entity_type", "entity_id", "actor_id", "reason", "created_at"],
@@ -90,13 +90,12 @@ const labels = {
   store_id: "Cửa hàng",
   effective_from: "Hiệu lực từ",
   effective_to: "Hiệu lực đến",
-  royalty_rate: "Phí royalty (%)",
+  royalty_rate: "Phí bản quyền (%)",
   initial_franchise_fee: "Phí ban đầu",
   discount_type: "Loại giảm",
   discount_value: "Mức giảm",
   start_date: "Bắt đầu",
   end_date: "Kết thúc",
-  funding_type: "Nguồn chi trả",
   business_date: "Ngày kinh doanh",
   gross_revenue: "Doanh thu gộp",
   promotion_discount: "Giảm giá",
@@ -104,6 +103,8 @@ const labels = {
   version: "Phiên bản",
   invoice_no: "Số hóa đơn",
   period_month: "Kỳ phí",
+  royalty_fee: "Phí bản quyền",
+  brand_promotion_support: "Thương hiệu hỗ trợ KM",
   invoice_total: "Tổng hóa đơn",
   paid_amount: "Đã thanh toán",
   outstanding_amount: "Còn phải trả",
@@ -129,12 +130,155 @@ const labels = {
   entity_id: "Mã đối tượng",
   actor_id: "Người thực hiện",
   reason: "Lý do",
+  store_name: "Cửa hàng",
+  store_code: "Mã cửa hàng",
+  brand_support: "Thương hiệu hỗ trợ KM",
+  converted_at: "Ngày mở cửa hàng",
 };
+
+const actionLabels = {
+  REGISTER_USER: "Đăng ký tài khoản", LOGIN_SUCCESS: "Đăng nhập", PASSWORD_RESET: "Đặt lại mật khẩu",
+  CHANGE_USER_STATUS: "Đổi trạng thái tài khoản", ASSIGN_ROLE: "Gán vai trò", REMOVE_ROLE: "Gỡ vai trò",
+  SUBMIT_APPLICATION: "Nộp hồ sơ", WITHDRAW_APPLICATION: "Rút hồ sơ", START_APPLICATION_REVIEW: "Thẩm định hồ sơ",
+  START_REVIEW: "Thẩm định hồ sơ", APPROVE_APPLICATION: "Duyệt hồ sơ", REJECT_APPLICATION: "Từ chối hồ sơ",
+  CREATE_STORE: "Mở cửa hàng", CREATE_CONTRACT: "Lập hợp đồng", RECORD_CONTRACT_PAYMENT: "Ghi nhận phí hợp đồng",
+  ACTIVATE_CONTRACT: "Kích hoạt hợp đồng", CREATE_PROMOTION: "Tạo khuyến mãi", ACTIVATE_PROMOTION: "Kích hoạt khuyến mãi",
+  CANCEL_PROMOTION: "Hủy khuyến mãi", SOFT_DELETE_PROMOTION: "Xóa khuyến mãi", SAVE_REVENUE: "Lưu doanh thu",
+  CREATE_REVENUE: "Lưu doanh thu", UPDATE_REVENUE: "Sửa doanh thu", SUBMIT_REVENUE: "Gửi duyệt doanh thu",
+  APPROVE_REVENUE: "Duyệt doanh thu", REJECT_REVENUE: "Từ chối doanh thu", REQUEST_REVENUE_ADJUSTMENT: "Yêu cầu điều chỉnh doanh thu",
+  REVENUE_VERSION: "Lưu phiên bản doanh thu", CREATE_BILLING_ADJUSTMENT: "Tạo điều chỉnh phí", GENERATE_INVOICE: "Lập hóa đơn",
+  ISSUE_INVOICE: "Phát hành hóa đơn", CANCEL_INVOICE: "Hủy hóa đơn", RECORD_PAYMENT: "Ghi nhận thanh toán",
+  REVERSE_PAYMENT: "Đảo thanh toán",
+};
+
+const entityLabels = {
+  USER: "Tài khoản", APPLICATION: "Hồ sơ", STORE: "Cửa hàng", CONTRACT: "Hợp đồng", PROMOTION: "Khuyến mãi",
+  REVENUE: "Doanh thu", INVOICE: "Hóa đơn", PAYMENT: "Thanh toán", BILLING_ADJUSTMENT: "Điều chỉnh phí",
+};
+
+const notificationLabels = {
+  APPLICATION_APPROVED: "Hồ sơ được duyệt", APPLICATION_REJECTED: "Hồ sơ bị từ chối",
+  PROMOTION_STARTED: "Khuyến mãi bắt đầu", REVENUE_SUBMITTED: "Doanh thu chờ duyệt",
+  REVENUE_APPROVED: "Doanh thu đã duyệt", REVENUE_REJECTED: "Doanh thu bị từ chối",
+  REVENUE_ADJUSTMENT_REQUESTED: "Yêu cầu điều chỉnh doanh thu", REVENUE_OVERDUE: "Chậm báo cáo doanh thu",
+  INVOICE_ISSUED: "Hóa đơn đã phát hành", INVOICE_OVERDUE: "Hóa đơn quá hạn",
+  PAYMENT_CONFIRMED: "Đã ghi nhận thanh toán", PAYMENT_REVERSED: "Thanh toán bị đảo",
+};
+
+const errorMessages = {
+  ACTIVE_CONTRACT_ALREADY_EXISTS: "Cửa hàng đã có hợp đồng đang hiệu lực.",
+  ACTIVE_CONTRACT_NOT_FOUND: "Cửa hàng chưa có hợp đồng hiệu lực trong kỳ này.",
+  ACTIVE_PROMOTION_CANNOT_BE_DELETED: "Không thể xóa khuyến mãi đang hoạt động, hãy hủy trước.",
+  ADJUSTMENT_REASON_REQUIRED: "Cần nhập lý do điều chỉnh.",
+  APPLICATION_ALREADY_CONVERTED_TO_STORE: "Hồ sơ này đã được mở cửa hàng.",
+  APPLICATION_CANNOT_BE_WITHDRAWN_FROM_STATUS: "Không thể rút hồ sơ ở trạng thái hiện tại.",
+  APPLICATION_MUST_BE_APPROVED: "Hồ sơ phải được duyệt trước.",
+  APPLICATION_MUST_BE_PENDING: "Chỉ thẩm định được hồ sơ đang chờ xử lý.",
+  APPLICATION_MUST_BE_UNDER_REVIEW: "Hồ sơ phải đang được thẩm định.",
+  APPLICATION_NOT_FOUND: "Không tìm thấy hồ sơ.",
+  APPLICATION_OWNERSHIP_REQUIRED: "Bạn chỉ thao tác được trên hồ sơ của mình.",
+  BILLING_ADJUSTMENT_INVALID: "Khoản điều chỉnh không hợp lệ.",
+  CANCEL_REASON_REQUIRED: "Cần nhập lý do hủy.",
+  CONTRACT_ALREADY_EXISTS_FOR_APPLICATION: "Hồ sơ này đã có hợp đồng.",
+  CONTRACT_FINANCIAL_TRANSACTION_INVALID: "Khoản thu hợp đồng không hợp lệ.",
+  CONTRACT_MUST_BE_DRAFT: "Chỉ thao tác được trên hợp đồng nháp.",
+  CONTRACT_NOT_FOUND: "Không tìm thấy hợp đồng.",
+  CONTRACT_SIGNED_DATE_REQUIRED: "Hợp đồng cần có ngày ký trước khi kích hoạt.",
+  DELETE_REASON_REQUIRED: "Cần nhập lý do xóa.",
+  EMAIL_ALREADY_EXISTS: "Email này đã được đăng ký.",
+  INITIAL_FEE_20_PERCENT_REQUIRED: "Cần thu tối thiểu 20% phí nhượng quyền ban đầu trước khi kích hoạt (tối thiểu {0} ₫).",
+  INVOICE_ALREADY_EXISTS_FOR_PERIOD: "Cửa hàng đã có hóa đơn cho kỳ này.",
+  INVOICE_CANNOT_BE_CANCELLED: "Không thể hủy hóa đơn đã có thanh toán.",
+  INVOICE_MUST_BE_DRAFT: "Chỉ phát hành được hóa đơn nháp.",
+  INVOICE_NOT_FOUND: "Không tìm thấy hóa đơn.",
+  INVOICE_NOT_PAYABLE: "Hóa đơn chưa ở trạng thái nhận thanh toán.",
+  LAST_ACTIVE_ADMIN_REQUIRED: "Hệ thống cần ít nhất một quản trị viên đang hoạt động.",
+  NOTIFICATION_NOT_FOUND: "Không tìm thấy thông báo.",
+  OPEN_APPLICATION_ALREADY_EXISTS: "Bạn đã có một hồ sơ đang được xử lý.",
+  PASSWORD_RESET_TOKEN_INVALID: "Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.",
+  PAYMENT_ALREADY_REVERSED: "Thanh toán này đã được đảo.",
+  PAYMENT_AMOUNT_INVALID_OR_EXCEEDS_OUTSTANDING: "Số tiền thanh toán không hợp lệ hoặc vượt công nợ.",
+  PAYMENT_NOT_FOUND: "Không tìm thấy thanh toán.",
+  PROMOTION_CANNOT_BE_CANCELLED: "Không thể hủy khuyến mãi ở trạng thái hiện tại.",
+  PROMOTION_DISCOUNT_EXCEEDS_GROSS: "Tiền giảm giá không được vượt doanh thu gộp.",
+  PROMOTION_DISCOUNT_INVALID: "Tiền giảm giá không hợp lệ.",
+  PROMOTION_MUST_BE_DRAFT: "Chỉ kích hoạt được khuyến mãi nháp.",
+  PROMOTION_NAME_REQUIRED: "Cần nhập tên chương trình.",
+  PROMOTION_NOT_APPLICABLE: "Khuyến mãi không áp dụng cho cửa hàng hoặc ngày này.",
+  PROMOTION_NOT_FOUND: "Không tìm thấy khuyến mãi.",
+  PROMOTION_STORES_REQUIRED: "Cần chọn cửa hàng áp dụng.",
+  REJECTION_REASON_REQUIRED: "Cần nhập lý do từ chối.",
+  REVENUE_ALREADY_EXISTS_FOR_DATE: "Cửa hàng đã báo doanh thu cho ngày này.",
+  REVENUE_AMOUNT_INVALID: "Số tiền doanh thu không hợp lệ.",
+  REVENUE_BUSINESS_DATE_INVALID: "Ngày kinh doanh không hợp lệ: không được trước ngày mở cửa hàng hoặc sau hôm nay.",
+  REVENUE_CANNOT_BE_EDITED: "Không thể sửa doanh thu ở trạng thái hiện tại.",
+  REVENUE_CANNOT_BE_SUBMITTED: "Không thể gửi duyệt doanh thu ở trạng thái hiện tại.",
+  REVENUE_DECISION_INVALID: "Quyết định duyệt không hợp lệ.",
+  REVENUE_MUST_BE_APPROVED: "Doanh thu phải được duyệt trước.",
+  REVENUE_MUST_BE_SUBMITTED: "Doanh thu phải đang chờ duyệt.",
+  REVENUE_NOT_FOUND: "Không tìm thấy doanh thu.",
+  REVENUE_SELF_APPROVAL_FORBIDDEN: "Người báo doanh thu không được tự duyệt.",
+  REVERSAL_REASON_REQUIRED: "Cần nhập lý do đảo thanh toán.",
+  ROLE_ALREADY_ASSIGNED: "Người dùng đã có vai trò này.",
+  ROLE_NOT_ASSIGNED: "Người dùng chưa có vai trò này.",
+  ROLE_NOT_FOUND: "Vai trò không hợp lệ.",
+  ROLE_REQUIRED: "Bạn không có quyền thực hiện thao tác này.",
+  STATUS_CHANGE_REASON_REQUIRED: "Cần nhập lý do đổi trạng thái.",
+  STORE_CODE_ALREADY_EXISTS: "Mã cửa hàng đã tồn tại.",
+  STORE_INFORMATION_REQUIRED: "Cần nhập mã, tên và địa chỉ cửa hàng.",
+  STORE_NOT_ACTIVE: "Cửa hàng chưa hoạt động.",
+  STORE_NOT_FOUND: "Không tìm thấy cửa hàng.",
+  STORE_OWNERSHIP_REQUIRED: "Bạn chỉ thao tác được trên cửa hàng của mình.",
+  USER_NOT_ACTIVE: "Tài khoản không hoạt động.",
+  USER_NOT_FOUND: "Không tìm thấy tài khoản.",
+  USER_STATUS_INVALID: "Trạng thái tài khoản không hợp lệ.",
+  VAT_RATE_INVALID: "Thuế VAT phải từ 0 đến 100%.",
+  "Email or password is incorrect": "Email hoặc mật khẩu không đúng.",
+  "Bearer token is required": "Phiên đăng nhập đã hết, vui lòng đăng nhập lại.",
+  "Invalid or expired token": "Phiên đăng nhập đã hết, vui lòng đăng nhập lại.",
+  "User is not active": "Tài khoản không hoạt động.",
+  "Insufficient permission": "Bạn không có quyền thực hiện thao tác này.",
+  "Store access denied": "Bạn không có quyền xem cửa hàng này.",
+  "Contract not found": "Không tìm thấy hợp đồng.",
+  "File is too large": "Tệp quá lớn (tối đa 10 MB).",
+  "Maximum 5000 rows": "Tệp có tối đa 5.000 dòng.",
+  "Format must be csv or xlsx": "Chỉ hỗ trợ tệp CSV hoặc Excel.",
+  "Only CSV and XLSX files are supported": "Chỉ hỗ trợ tệp CSV hoặc Excel.",
+  "Rate limit exceeded": "Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút.",
+  "Invalid email address": "Email không hợp lệ.",
+  "Full name is required": "Cần nhập họ và tên.",
+  "Password must contain at least 8 characters": "Mật khẩu cần tối thiểu 8 ký tự.",
+  "Password must not exceed 128 characters": "Mật khẩu tối đa 128 ký tự.",
+  "Contract number is required": "Cần nhập số hợp đồng.",
+  "Contract end date cannot precede start date": "Ngày kết thúc hợp đồng không được trước ngày bắt đầu.",
+  "Royalty rate must be between 0 and 100": "Phí bản quyền phải từ 0 đến 100%.",
+  "Contract amounts cannot be negative": "Các khoản phí hợp đồng không được âm.",
+  "Proposed area must be greater than zero": "Diện tích phải lớn hơn 0.",
+  "Investment budget cannot be negative": "Ngân sách đầu tư không được âm.",
+  "Rejection reason is required": "Cần nhập lý do từ chối.",
+  "Adjustment reason is required": "Cần nhập lý do điều chỉnh.",
+  "Invalid report period": "Khoảng thời gian báo cáo không hợp lệ.",
+};
+
+function translateError(detail) {
+  const text = String(detail || "").trim();
+  if (errorMessages[text]) return errorMessages[text];
+  const [code, ...rest] = text.split(":");
+  if (errorMessages[code]) {
+    const extra = rest.join(":").trim();
+    const amount = Number(extra);
+    const value = extra && !Number.isNaN(amount) ? new Intl.NumberFormat("vi-VN").format(amount) : extra;
+    return errorMessages[code].replace("{0}", value);
+  }
+  if (text.startsWith("Required fields are empty") || text.startsWith("Store information is required")) return "Cần nhập đủ các thông tin bắt buộc.";
+  if (/^[A-Z][A-Z0-9_]+$/.test(code)) return `Thao tác không thành công (mã lỗi ${code}).`;
+  return text;
+}
 
 const moneyFields = new Set([
   "investment_budget", "initial_franchise_fee", "discount_value", "gross_revenue",
   "promotion_discount", "net_revenue", "invoice_total", "paid_amount",
-  "outstanding_amount", "amount",
+  "outstanding_amount", "amount", "royalty_fee", "brand_promotion_support", "brand_support",
 ]);
 
 const element = (id) => document.getElementById(id);
@@ -184,10 +328,16 @@ async function apiRequest(path, options = {}) {
 
 function resultMessage(result) {
   if (result?.data && !(result.data instanceof Blob)) {
-    if (typeof result.data.detail === "string") return result.data.detail;
-    if (result.data.detail) return JSON.stringify(result.data.detail);
+    if (typeof result.data.detail === "string") return translateError(result.data.detail);
+    if (Array.isArray(result.data.detail)) {
+      const fieldsInvalid = result.data.detail.map((item) => {
+        const key = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : "";
+        return labels[key] || key;
+      }).filter(Boolean);
+      return `Dữ liệu chưa hợp lệ${fieldsInvalid.length ? `: ${[...new Set(fieldsInvalid)].join(", ")}` : "."}`;
+    }
   }
-  return `Thao tác thất bại (HTTP ${result?.status || "?"}).`;
+  return `Thao tác không thành công (mã HTTP ${result?.status || "?"}).`;
 }
 
 async function checkHealth() {
@@ -291,8 +441,7 @@ async function openView(view) {
 function primaryActionFor(resource) {
   if (resource === "applications" && !hasRole("ADMIN") && !hasRole("ACCOUNTANT")) return { label: "Nộp hồ sơ", action: openCreateApplication };
   if (resource === "applications" && hasRole("STORE_OWNER")) return { label: "Nộp hồ sơ", action: openCreateApplication };
-  if (resource === "stores" && hasRole("ADMIN")) return { label: "Tạo cửa hàng", action: openCreateStore };
-  if (resource === "contracts" && hasRole("ADMIN")) return { label: "Tạo hợp đồng", action: openCreateContract };
+  if (resource === "contracts" && hasRole("ADMIN")) return { label: "Lập hợp đồng", action: openCreateContract };
   if (resource === "promotions" && hasRole("ADMIN")) return { label: "Tạo khuyến mãi", action: openCreatePromotion };
   if (resource === "revenues" && hasRole("STORE_OWNER")) return { label: "Ghi nhận doanh thu", action: openCreateRevenue };
   if (resource === "invoices" && hasRole("ACCOUNTANT")) return { label: "Lập hóa đơn", action: openGenerateInvoice };
@@ -315,6 +464,7 @@ function configureResourceHeader() {
   }
   const canImport = state.resource === "revenues" && hasRole("STORE_OWNER");
   element("import-revenue").classList.toggle("hidden", !canImport);
+  element("revenue-template").classList.toggle("hidden", !canImport);
 }
 
 async function fetchPage(resource, params = {}) {
@@ -371,9 +521,19 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("vi-VN").format(date);
 }
 
-function displayValue(key, value) {
-  if (value === null || value === undefined || value === "") return "—";
+function displayValue(key, value, row = {}) {
+  if (value === null || value === undefined || value === "") {
+    if (key === "store_name" && row.store_code) return row.store_code;
+    return "—";
+  }
+  if (key === "store_name" && row.store_code) return `${row.store_code} — ${value}${row.status === "DRAFT" ? " (chưa hoạt động)" : ""}`;
   if (key === "store_id") return state.references.stores.get(value) || value.slice(0, 8);
+  if (key === "discount_value" && row.discount_type === "PERCENTAGE") return `${value}%`;
+  if (key === "action") return actionLabels[value] || value;
+  if (key === "entity_type") return entityLabels[value] || value;
+  if (key === "notification_type") return notificationLabels[value] || value;
+  if (key === "title" && row.notification_type && notificationLabels[row.notification_type]) return notificationLabels[row.notification_type];
+  if (["entity_id", "actor_id"].includes(key)) return String(value).slice(0, 8);
   if (key === "invoice_id") return state.references.invoices.get(value) || value.slice(0, 8);
   if (key === "status") return statusLabel(value);
   if (moneyFields.has(key) && !Number.isNaN(Number(value))) return `${new Intl.NumberFormat("vi-VN").format(Number(value))} ₫`;
@@ -410,10 +570,10 @@ function renderResourceRows() {
       if (key === "status") {
         const badge = document.createElement("span");
         badge.className = `status-pill status-${String(row[key] || "").toLowerCase()}`;
-        badge.textContent = displayValue(key, row[key]);
+        badge.textContent = displayValue(key, row[key], row);
         td.append(badge);
       } else {
-        td.textContent = displayValue(key, row[key]);
+        td.textContent = displayValue(key, row[key], row);
         td.title = td.textContent;
       }
       tr.append(td);
@@ -448,7 +608,7 @@ function actionDescriptors(row) {
     actions.push({ label: "Tải PDF", handler: () => downloadProtected(`/api/v1/contracts/${row.id}/pdf`, `${row.contract_no}.pdf`) });
     if (hasRole("ADMIN") && row.status === "DRAFT") {
       actions.push({ label: "Ghi nhận phí", handler: () => openContractTransaction(row) });
-      actions.push({ label: "Kích hoạt", handler: () => directAction(`/api/v1/contracts/${row.id}/activate`, "POST", null, "Hợp đồng và cửa hàng đã được kích hoạt.") });
+      actions.push({ label: "Kích hoạt", handler: () => directAction(`/api/v1/contracts/${row.id}/activate`, "POST", null, "Hợp đồng đã kích hoạt, cửa hàng bắt đầu hoạt động.") });
     }
   }
   if (state.resource === "promotions" && hasRole("ADMIN")) {
@@ -610,59 +770,36 @@ function openCreateApplication() {
   });
 }
 
-async function openCreateStore() {
-  const applications = await fetchPage("applications", { status: "APPROVED" });
-  if (!applications.ok) return showToast(resultMessage(applications), true);
-  const available = applications.data.items.filter((item) => !item.converted_at);
-  if (!available.length) return showToast("Không có hồ sơ đã duyệt đang chờ tạo cửa hàng.", true);
-  openDialog({
-    title: "Tạo cửa hàng từ hồ sơ",
-    fields: [
-      { name: "application_id", label: "Hồ sơ đã duyệt", type: "select", required: true, options: available.map((item) => ({ value: item.id, label: `${item.proposed_store_name} — ${item.applicant_name}` })) },
-      { name: "code", label: "Mã cửa hàng", required: true, placeholder: "HN-001" },
-      { name: "name", label: "Tên cửa hàng", required: true },
-      { name: "address", label: "Địa chỉ", required: true },
-      { name: "phone", label: "Điện thoại", type: "tel" },
-      { name: "email", label: "Email", type: "email" },
-    ],
-    submitText: "Tạo cửa hàng",
-    onSubmit: (values) => {
-      const application = available.find((item) => item.id === values.application_id);
-      return (async () => {
-        const roleResult = await apiRequest(`/api/v1/auth/users/${application.applicant_id}/roles`, {
-          method: "POST",
-          body: JSON.stringify({ role: "STORE_OWNER" }),
-        });
-        if (!roleResult.ok && !resultMessage(roleResult).includes("ALREADY")) throw new Error(resultMessage(roleResult));
-        return submitCreation("/api/v1/stores", { ...values, owner_id: application.applicant_id }, "Cửa hàng đã được tạo và chủ cửa hàng đã được phân quyền.");
-      })();
-    },
-  });
-}
-
 async function openCreateContract() {
-  const stores = await fetchPage("stores");
-  if (!stores.ok) return showToast(resultMessage(stores), true);
-  const available = stores.data.items.filter((item) => item.status === "INACTIVE");
-  if (!available.length) return showToast("Không có cửa hàng chưa kích hoạt để lập hợp đồng.", true);
+  const [applications, contracts] = await Promise.all([
+    fetchPage("applications", { status: "APPROVED" }),
+    fetchPage("contracts"),
+  ]);
+  if (!applications.ok) return showToast(resultMessage(applications), true);
+  const taken = new Set((contracts.ok ? contracts.data.items : [])
+    .filter((item) => ["DRAFT", "ACTIVE"].includes(item.status))
+    .map((item) => item.application_id));
+  const available = applications.data.items.filter((item) => !item.converted_at && !taken.has(item.id));
+  if (!available.length) return showToast("Không có hồ sơ đã duyệt đang chờ lập hợp đồng.", true);
   const nextYear = new Date();
   nextYear.setFullYear(nextYear.getFullYear() + 1);
   openDialog({
     title: "Lập hợp đồng nhượng quyền",
+    description: "Lập hợp đồng sẽ tự tạo cửa hàng (mã tự sinh, tên và địa chỉ lấy từ hồ sơ) ở trạng thái chưa hoạt động. Khi đã thu tối thiểu 20% phí ban đầu, bấm Kích hoạt để cửa hàng bắt đầu hoạt động.",
     fields: [
-      { name: "store_id", label: "Cửa hàng", type: "select", required: true, options: available.map((item) => ({ value: item.id, label: `${item.code} — ${item.name}` })) },
+      { name: "application_id", label: "Hồ sơ đã duyệt", type: "select", required: true, options: available.map((item) => ({ value: item.id, label: `${item.proposed_store_name} — ${item.applicant_name}` })) },
       { name: "contract_no", label: "Số hợp đồng", required: true, value: `HD-${Date.now()}` },
       { name: "signed_date", label: "Ngày ký", type: "date", value: today() },
       { name: "effective_from", label: "Hiệu lực từ", type: "date", required: true, value: today() },
       { name: "effective_to", label: "Hiệu lực đến", type: "date", required: true, value: nextYear.toISOString().slice(0, 10) },
-      { name: "royalty_rate", label: "Royalty (%)", type: "number", dataType: "number", required: true, value: 5, min: 0, max: 100, step: 0.01 },
+      { name: "royalty_rate", label: "Phí bản quyền (%)", type: "number", dataType: "number", required: true, value: 5, min: 0, max: 100, step: 0.01 },
       { name: "initial_franchise_fee", label: "Phí nhượng quyền ban đầu", type: "number", dataType: "number", required: true, value: 100000000, min: 0 },
       { name: "deposit_amount", label: "Tiền đặt cọc", type: "number", dataType: "number", required: true, value: 20000000, min: 0 },
       { name: "system_fee", label: "Phí hệ thống/tháng", type: "number", dataType: "number", required: true, value: 1000000, min: 0 },
       { name: "service_fee", label: "Phí dịch vụ/tháng", type: "number", dataType: "number", required: true, value: 2000000, min: 0 },
     ],
-    submitText: "Tạo hợp đồng",
-    onSubmit: (values) => submitCreation("/api/v1/contracts", values, "Hợp đồng nháp đã được tạo."),
+    submitText: "Lập hợp đồng",
+    onSubmit: (values) => submitCreation("/api/v1/contracts", values, "Đã lập hợp đồng và tạo cửa hàng (chưa hoạt động)."),
   });
 }
 
@@ -689,6 +826,7 @@ function openCreatePromotion() {
   nextWeek.setDate(nextWeek.getDate() + 7);
   openDialog({
     title: "Tạo chương trình khuyến mãi",
+    description: "Thương hiệu chịu 100% chi phí khuyến mãi: toàn bộ tiền giảm giá được trừ vào hóa đơn phí của cửa hàng.",
     fields: [
       { name: "name", label: "Tên chương trình", required: true },
       { name: "description", label: "Mô tả", type: "textarea" },
@@ -699,13 +837,6 @@ function openCreatePromotion() {
       { name: "discount_value", label: "Mức giảm", type: "number", dataType: "number", required: true, min: 0.01, step: 0.01 },
       { name: "start_date", label: "Ngày bắt đầu", type: "date", required: true, value: today() },
       { name: "end_date", label: "Ngày kết thúc", type: "date", required: true, value: nextWeek.toISOString().slice(0, 10) },
-      { name: "funding_type", label: "Nguồn chi trả", type: "select", required: true, options: [
-        { value: "SHARED", label: "Thương hiệu và cửa hàng cùng chi" },
-        { value: "BRAND", label: "Thương hiệu chi trả" },
-        { value: "STORE", label: "Cửa hàng chi trả" },
-      ] },
-      { name: "brand_share", label: "Tỷ lệ thương hiệu (%)", type: "number", dataType: "number", required: true, value: 60, min: 0, max: 100 },
-      { name: "store_share", label: "Tỷ lệ cửa hàng (%)", type: "number", dataType: "number", required: true, value: 40, min: 0, max: 100 },
     ],
     submitText: "Tạo khuyến mãi",
     onSubmit: (values) => submitCreation("/api/v1/promotions", { ...values, scope: "ALL_STORES", store_ids: [] }, "Khuyến mãi nháp đã được tạo."),
@@ -719,7 +850,7 @@ async function openCreateRevenue() {
   const activePromotions = promotions.ok ? promotions.data.items : [];
   openDialog({
     title: "Ghi nhận doanh thu ngày",
-    description: "Doanh thu được lưu nháp trước khi gửi Kế toán duyệt.",
+    description: "Doanh thu được lưu nháp trước khi gửi Kế toán duyệt. Tiền giảm giá khuyến mãi do thương hiệu chịu và được trừ vào hóa đơn tháng.",
     fields: [
       { name: "store_id", label: "Cửa hàng", type: "select", required: true, options: stores.data.items.map((item) => ({ value: item.id, label: `${item.code} — ${item.name}` })) },
       { name: "business_date", label: "Ngày kinh doanh", type: "date", required: true, value: today() },
@@ -742,13 +873,13 @@ async function openGenerateInvoice() {
   if (!stores.ok) return showToast(resultMessage(stores), true);
   if (!stores.data.items.length) return showToast("Không có cửa hàng đang hoạt động.", true);
   openDialog({
-    title: "Lập hóa đơn phí Franchise",
-    description: "Hệ thống tự tổng hợp doanh thu đã duyệt và tính phí trong kỳ.",
+    title: "Lập hóa đơn phí nhượng quyền",
+    description: "Hệ thống tự tổng hợp doanh thu đã duyệt, tính phí bản quyền trên doanh thu gộp và trừ toàn bộ tiền giảm giá khuyến mãi (thương hiệu chịu).",
     fields: [
       { name: "store_id", label: "Cửa hàng", type: "select", required: true, options: stores.data.items.map((item) => ({ value: item.id, label: `${item.code} — ${item.name}` })) },
       { name: "invoice_no", label: "Số hóa đơn", required: true, value: `INV-${Date.now()}` },
       { name: "period_month", label: "Kỳ hóa đơn", type: "date", required: true, value: monthStart() },
-      { name: "vat_rate", label: "VAT (%)", type: "number", dataType: "number", required: true, value: 10, min: 0, max: 100 },
+      { name: "vat_rate", label: "Thuế VAT (%)", type: "number", dataType: "number", required: true, value: 10, min: 0, max: 100 },
     ],
     submitText: "Tạo hóa đơn",
     onSubmit: (values) => submitCreation("/api/v1/invoices/generate", values, "Hóa đơn nháp đã được tạo."),
@@ -795,7 +926,7 @@ async function downloadProtected(path, filename) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast("Đã tải file.");
+    showToast("Đã tải tệp.");
   } catch (error) {
     showToast(error.message, true);
   }
@@ -807,7 +938,9 @@ async function importRevenueFile(file) {
   try {
     const result = await apiRequest("/api/v1/revenues/import", { method: "POST", body: data });
     if (!result.ok) throw new Error(resultMessage(result));
-    showToast(`Đã nhập ${result.data.success_rows}/${result.data.total_rows} dòng.`);
+    const failed = result.data.errors || [];
+    const detail = failed.length ? ` Lỗi: ${failed.slice(0, 3).map((item) => `dòng ${item.row} - ${translateError(item.error)}`).join("; ")}` : "";
+    showToast(`Đã nhập ${result.data.success_rows}/${result.data.total_rows} dòng.${detail}`, failed.length > 0);
     await loadResource();
   } catch (error) {
     showToast(error.message, true);
@@ -896,7 +1029,7 @@ function renderStandaloneTable(container, rows) {
     container.append(empty);
     return;
   }
-  const keys = Object.keys(rows[0]);
+  const keys = Object.keys(rows[0]).filter((key) => key !== "store_id");
   const table = document.createElement("table");
   const head = document.createElement("thead");
   const hr = document.createElement("tr");
@@ -905,7 +1038,7 @@ function renderStandaloneTable(container, rows) {
   const body = document.createElement("tbody");
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    keys.forEach((key) => { const td = document.createElement("td"); td.textContent = displayValue(key, row[key]); tr.append(td); });
+    keys.forEach((key) => { const td = document.createElement("td"); td.textContent = displayValue(key, row[key], row); tr.append(td); });
     body.append(tr);
   });
   table.append(head, body);

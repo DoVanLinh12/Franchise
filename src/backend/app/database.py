@@ -1,5 +1,3 @@
-from collections.abc import AsyncIterator
-
 import asyncpg
 
 from app.config import settings
@@ -24,7 +22,3 @@ def get_pool() -> asyncpg.Pool:
         raise RuntimeError("Database pool is not initialized")
     return _pool
 
-
-async def get_connection() -> AsyncIterator[asyncpg.Connection]:
-    async with get_pool().acquire() as connection:
-        yield connection

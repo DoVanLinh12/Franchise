@@ -1,8 +1,11 @@
 -- Canonical schema: tables, indexes, and table constraints only.
 CREATE SCHEMA IF NOT EXISTS app;
 
+-- Store codes are generated automatically: CH0001, CH0002, ...
+CREATE SEQUENCE app.store_code_seq;
+
 CREATE TABLE app.users (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email varchar(320) NOT NULL,
     password_hash text NOT NULL,
     full_name varchar(200) NOT NULL,
@@ -13,25 +16,17 @@ CREATE TABLE app.users (
     deleted_at timestamptz,
     password_changed_at timestamptz NOT NULL DEFAULT now(),
     last_login_at timestamptz,
+    roles varchar(30)[] NOT NULL DEFAULT '{}',
+    reset_token_hash char(64) UNIQUE,
+    reset_token_expires_at timestamptz,
     CONSTRAINT ck_users_status
-        CHECK (status IN ('ACTIVE', 'INACTIVE'))
-);
-
-CREATE TABLE app.roles (
-    id smallint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    code varchar(30) NOT NULL UNIQUE,
-    name varchar(100) NOT NULL
-);
-
-CREATE TABLE app.user_roles (
-    user_id uuid NOT NULL REFERENCES app.users(id),
-    role_id smallint NOT NULL REFERENCES app.roles(id),
-    assigned_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, role_id)
+        CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    CONSTRAINT ck_users_roles
+        CHECK (roles <@ ARRAY['ADMIN', 'STORE_OWNER', 'ACCOUNTANT']::varchar(30)[])
 );
 
 CREATE TABLE app.franchise_applications (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     applicant_id uuid NOT NULL REFERENCES app.users(id),
     applicant_name varchar(200) NOT NULL,
     email varchar(320) NOT NULL,
@@ -70,7 +65,7 @@ CREATE TABLE app.franchise_applications (
 );
 
 CREATE TABLE app.stores (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     code varchar(50) NOT NULL UNIQUE,
     name varchar(200) NOT NULL,
     owner_id uuid NOT NULL REFERENCES app.users(id),
@@ -90,9 +85,15 @@ CREATE TABLE app.stores (
 );
 
 CREATE TABLE app.contracts (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     contract_no varchar(100) NOT NULL UNIQUE,
-    store_id uuid NOT NULL REFERENCES app.stores(id),
+    application_id uuid NOT NULL REFERENCES app.franchise_applications(id),
+    store_id uuid REFERENCES app.stores(id),
+    store_code varchar(50) NOT NULL,
+    store_name varchar(200) NOT NULL,
+    store_address text NOT NULL,
+    store_phone varchar(30),
+    store_email varchar(320),
     signed_date date,
     effective_from date NOT NULL,
     effective_to date NOT NULL,
@@ -156,6 +157,10 @@ CREATE UNIQUE INDEX uq_contracts_one_active_per_store
 
 CREATE INDEX ix_contracts_store_id ON app.contracts (store_id);
 
+CREATE UNIQUE INDEX uq_contracts_one_open_per_application
+    ON app.contracts (application_id)
+    WHERE status IN ('DRAFT', 'ACTIVE');
+
 CREATE INDEX ix_contracts_status ON app.contracts (status);
 
 CREATE INDEX ix_audit_logs_entity
@@ -164,23 +169,8 @@ CREATE INDEX ix_audit_logs_entity
 CREATE INDEX ix_audit_logs_actor
     ON app.audit_logs (actor_id, created_at DESC);
 
-CREATE TABLE app.password_reset_tokens (
-    id uuid PRIMARY KEY,
-    user_id uuid NOT NULL REFERENCES app.users(id),
-    token_hash char(64) NOT NULL UNIQUE,
-    expires_at timestamptz NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    used_at timestamptz,
-    requested_by_ip inet,
-    CONSTRAINT ck_password_reset_tokens_expiry CHECK (expires_at > created_at)
-);
-
-CREATE INDEX ix_password_reset_tokens_user_active
-    ON app.password_reset_tokens (user_id, expires_at DESC)
-    WHERE used_at IS NULL;
-
 CREATE TABLE app.contract_financial_transactions (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     contract_id uuid NOT NULL REFERENCES app.contracts(id),
     transaction_type varchar(30) NOT NULL,
     amount numeric(18, 0) NOT NULL,
@@ -196,7 +186,7 @@ CREATE TABLE app.contract_financial_transactions (
 );
 
 CREATE TABLE app.promotions (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name varchar(200) NOT NULL,
     description text,
     discount_type varchar(20) NOT NULL,
@@ -204,9 +194,6 @@ CREATE TABLE app.promotions (
     start_date date NOT NULL,
     end_date date NOT NULL,
     scope varchar(20) NOT NULL,
-    funding_type varchar(20) NOT NULL,
-    brand_share_percent numeric(7, 4) NOT NULL,
-    store_share_percent numeric(7, 4) NOT NULL,
     status varchar(20) NOT NULL DEFAULT 'DRAFT',
     created_by uuid NOT NULL REFERENCES app.users(id),
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -222,14 +209,6 @@ CREATE TABLE app.promotions (
     CONSTRAINT ck_promotions_dates CHECK (end_date >= start_date),
     CONSTRAINT ck_promotions_scope
         CHECK (scope IN ('ALL_STORES', 'SELECTED_STORES')),
-    CONSTRAINT ck_promotions_funding
-        CHECK (funding_type IN ('BRAND', 'STORE', 'SHARED')),
-    CONSTRAINT ck_promotions_shares CHECK (
-        brand_share_percent >= 0 AND store_share_percent >= 0
-        AND brand_share_percent + store_share_percent = 100
-        AND (funding_type <> 'BRAND' OR brand_share_percent = 100)
-        AND (funding_type <> 'STORE' OR store_share_percent = 100)
-    ),
     CONSTRAINT ck_promotions_status
         CHECK (status IN ('DRAFT', 'ACTIVE', 'CANCELLED', 'EXPIRED'))
 );
@@ -241,7 +220,7 @@ CREATE TABLE app.promotion_stores (
 );
 
 CREATE TABLE app.revenues (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     store_id uuid NOT NULL REFERENCES app.stores(id),
     business_date date NOT NULL,
     gross_revenue numeric(18, 0) NOT NULL,
@@ -277,53 +256,18 @@ CREATE TABLE app.revenues (
 );
 
 CREATE TABLE app.revenue_promotion_details (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     revenue_id uuid NOT NULL REFERENCES app.revenues(id) ON DELETE CASCADE,
     promotion_id uuid NOT NULL REFERENCES app.promotions(id),
     discount_amount numeric(18, 0) NOT NULL,
-    brand_share_percent numeric(7, 4) NOT NULL,
-    store_share_percent numeric(7, 4) NOT NULL,
-    brand_support_amount numeric(18, 0) NOT NULL,
-    store_cost_amount numeric(18, 0) NOT NULL,
     promotion_name_snapshot varchar(200) NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_revenue_promotion UNIQUE (revenue_id, promotion_id),
-    CONSTRAINT ck_revenue_promotion_amounts CHECK (
-        discount_amount >= 0 AND brand_support_amount >= 0
-        AND store_cost_amount >= 0
-        AND brand_support_amount + store_cost_amount = discount_amount
-    )
-);
-
-CREATE TABLE app.revenue_versions (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    revenue_id uuid NOT NULL REFERENCES app.revenues(id),
-    version integer NOT NULL,
-    snapshot jsonb NOT NULL,
-    change_reason text NOT NULL,
-    changed_by uuid NOT NULL REFERENCES app.users(id),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (revenue_id, version)
-);
-
-CREATE TABLE app.monthly_closes (
-    id uuid PRIMARY KEY,
-    store_id uuid NOT NULL REFERENCES app.stores(id),
-    period_month date NOT NULL,
-    monthly_gross_revenue numeric(18, 0) NOT NULL,
-    monthly_promotion_discount numeric(18, 0) NOT NULL,
-    monthly_net_revenue numeric(18, 0) NOT NULL,
-    brand_promotion_support numeric(18, 0) NOT NULL,
-    closed_by uuid NOT NULL REFERENCES app.users(id),
-    closed_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT uq_monthly_closes_store_period
-        UNIQUE (store_id, period_month),
-    CONSTRAINT ck_monthly_closes_period
-        CHECK (period_month = date_trunc('month', period_month)::date)
+    CONSTRAINT ck_revenue_promotion_amounts CHECK (discount_amount >= 0)
 );
 
 CREATE TABLE app.billing_adjustments (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     store_id uuid NOT NULL REFERENCES app.stores(id),
     source_period date,
     amount numeric(18, 0) NOT NULL,
@@ -331,34 +275,29 @@ CREATE TABLE app.billing_adjustments (
     status varchar(20) NOT NULL DEFAULT 'PENDING',
     created_by uuid NOT NULL REFERENCES app.users(id),
     applied_invoice_id uuid,
+    adjustment_type varchar(20) NOT NULL DEFAULT 'ADJUSTMENT',
+    source_invoice_id uuid,
     created_at timestamptz NOT NULL DEFAULT now(),
     applied_at timestamptz,
     CONSTRAINT ck_billing_adjustments_amount CHECK (amount <> 0),
+    CONSTRAINT ck_billing_adjustments_type CHECK (
+        adjustment_type IN ('ADJUSTMENT', 'CREDIT')
+        AND (adjustment_type <> 'CREDIT' OR amount < 0)
+    ),
     CONSTRAINT ck_billing_adjustments_status
         CHECK (status IN ('PENDING', 'APPLIED', 'CANCELLED'))
 );
 
-CREATE TABLE app.store_credits (
-    id uuid PRIMARY KEY,
-    store_id uuid NOT NULL REFERENCES app.stores(id),
-    source_invoice_id uuid,
-    amount numeric(18, 0) NOT NULL,
-    remaining_amount numeric(18, 0) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT ck_store_credits_amount CHECK (
-        amount > 0 AND remaining_amount >= 0 AND remaining_amount <= amount
-    )
-);
-
 CREATE TABLE app.invoices (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_no varchar(100) NOT NULL UNIQUE,
     store_id uuid NOT NULL REFERENCES app.stores(id),
     contract_id uuid NOT NULL REFERENCES app.contracts(id),
-    monthly_close_id uuid NOT NULL REFERENCES app.monthly_closes(id),
     period_month date NOT NULL,
     royalty_rate numeric(7, 4) NOT NULL,
     monthly_gross_revenue numeric(18, 0) NOT NULL,
+    monthly_promotion_discount numeric(18, 0) NOT NULL DEFAULT 0,
+    monthly_net_revenue numeric(18, 0) NOT NULL DEFAULT 0,
     royalty_fee numeric(18, 0) NOT NULL,
     system_fee numeric(18, 0) NOT NULL,
     service_fee numeric(18, 0) NOT NULL,
@@ -400,17 +339,8 @@ CREATE TABLE app.invoices (
     )
 );
 
-CREATE TABLE app.invoice_items (
-    id uuid PRIMARY KEY,
-    invoice_id uuid NOT NULL REFERENCES app.invoices(id),
-    item_type varchar(50) NOT NULL,
-    description varchar(300) NOT NULL,
-    amount numeric(18, 0) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE app.payments (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     payment_no varchar(100) NOT NULL UNIQUE,
     invoice_id uuid NOT NULL REFERENCES app.invoices(id),
     amount numeric(18, 0) NOT NULL,
@@ -431,7 +361,7 @@ CREATE TABLE app.payments (
 );
 
 CREATE TABLE app.notifications (
-    id uuid PRIMARY KEY,
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES app.users(id),
     notification_type varchar(50) NOT NULL,
     title varchar(200) NOT NULL,
@@ -476,6 +406,6 @@ ALTER TABLE app.billing_adjustments
     ADD CONSTRAINT fk_billing_adjustments_invoice
     FOREIGN KEY (applied_invoice_id) REFERENCES app.invoices(id);
 
-ALTER TABLE app.store_credits
-    ADD CONSTRAINT fk_store_credits_invoice
+ALTER TABLE app.billing_adjustments
+    ADD CONSTRAINT fk_billing_adjustments_source_invoice
     FOREIGN KEY (source_invoice_id) REFERENCES app.invoices(id);

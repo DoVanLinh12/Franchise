@@ -5,9 +5,9 @@
 1. Identity: đăng ký, đăng nhập bằng email/mật khẩu, đặt lại mật khẩu và cấp
    quyền theo vai trò. API dùng access JWT; hết hạn thì đăng nhập lại.
 2. RBAC: Admin, Store Owner, Accountant; kiểm tra ownership theo Store.
-3. Onboarding: Application → review → approve → Store → Contract.
+3. Onboarding: Application → review → approve → Contract (DRAFT, tự tạo Store INACTIVE) → thu 20% phí → kích hoạt → Store ACTIVE.
 4. Activation: thu tối thiểu 20% Initial Fee trước khi Contract/Store ACTIVE.
-5. Promotion: Brand/Store/Shared funding và phạm vi áp dụng.
+5. Promotion: thương hiệu chịu 100% chi phí; phạm vi áp dụng.
 6. Revenue: một Store/ngày, workflow và version adjustment.
 7. Billing: monthly aggregation, Royalty, support, adjustment, credit, VAT.
 8. Payment: partial, không overpay, reverse và outstanding tự tính lại.
@@ -23,7 +23,7 @@
 - Structured JSON logging, request ID, readiness/health.
 - Redis cache cho báo cáo; Celery cho email/cảnh báo nền.
 - PostgreSQL/Redis/API chạy bằng Docker Compose trên máy local.
-- Jenkins build, lint, type-check, unit/integration/Postman test.
+- GitHub Actions build, lint, type-check, unit/integration/Postman test.
 
 ## Constraints
 

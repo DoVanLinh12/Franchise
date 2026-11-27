@@ -14,6 +14,7 @@ class ContractService:
     async def create_draft(self, command: CreateDraftContractCommand) -> UUID:
         if not command.contract_no.strip():
             raise ValidationError("Contract number is required")
+
         if command.effective_to < command.effective_from:
             raise ValidationError("Contract end date cannot precede start date")
         if not 0 <= command.royalty_rate <= 100:
@@ -35,7 +36,7 @@ class ContractService:
                     connection,
                     contract_id=contract_id,
                     actor_id=command.actor_id,
-                    store_id=command.store_id,
+                    application_id=command.application_id,
                     contract_no=command.contract_no,
                     signed_date=command.signed_date,
                     effective_from=command.effective_from,

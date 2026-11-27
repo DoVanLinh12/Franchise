@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Hệ thống quản lý chuỗi cửa hàng nhượng quyền">
-    <title>Franchise Management</title>
+    <title>Quản lý chuỗi cửa hàng nhượng quyền</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <header class="topbar">
       <div>
-        <p class="eyebrow">FRANCHISE OPERATIONS</p>
+        <p class="eyebrow">VẬN HÀNH NHƯỢNG QUYỀN</p>
         <h1>Hệ thống quản lý nhượng quyền</h1>
       </div>
       <div class="topbar-actions">
@@ -32,8 +32,8 @@
             <button class="button button-primary" type="submit">Đăng nhập</button>
             <button id="register-button" class="button button-secondary" type="button">Đăng ký tài khoản mới</button>
           </form>
-          <div class="demo-users" aria-label="Tài khoản demo">
-            <button class="demo-user" type="button" data-email="admin@franchise.local">Admin</button>
+          <div class="demo-users" aria-label="Tài khoản dùng thử">
+            <button class="demo-user" type="button" data-email="admin@franchise.local">Quản trị viên</button>
             <button class="demo-user" type="button" data-email="owner@franchise.local">Chủ cửa hàng</button>
             <button class="demo-user" type="button" data-email="accountant@franchise.local">Kế toán</button>
           </div>
@@ -43,11 +43,11 @@
           <h2>Quy trình chính</h2>
           <ol class="workflow-list">
             <li>Đăng ký và duyệt hồ sơ nhượng quyền</li>
-            <li>Tạo cửa hàng, hợp đồng và kích hoạt</li>
+            <li>Lập hợp đồng (tự tạo cửa hàng), thu phí và kích hoạt</li>
             <li>Ghi nhận, duyệt doanh thu hằng ngày</li>
             <li>Lập hóa đơn, thanh toán và báo cáo</li>
           </ol>
-          <p class="muted">Tài khoản demo dùng mật khẩu <code>Admin@123</code>.</p>
+          <p class="muted">Tài khoản dùng thử có mật khẩu <code>Admin@123</code>.</p>
         </aside>
       </section>
 
@@ -92,6 +92,7 @@
             <div class="section-heading">
               <div><p class="eyebrow" id="resource-eyebrow">QUẢN LÝ</p><h2 id="resource-title">Danh sách</h2></div>
               <div class="heading-actions">
+                <a id="revenue-template" class="button button-secondary hidden" href="mau-nhap-doanh-thu.csv" download>Tải tệp mẫu</a>
                 <button id="import-revenue" class="button button-secondary hidden" type="button">Nhập doanh thu</button>
                 <input id="revenue-file" class="hidden" type="file" accept=".csv,.xlsx">
                 <button id="primary-action" class="button button-primary hidden" type="button">Tạo mới</button>
@@ -123,8 +124,8 @@
               <label>Từ ngày<input id="period-from" type="date" required></label>
               <label>Đến ngày<input id="period-to" type="date" required></label>
               <button class="button button-primary" type="submit">Xem báo cáo</button>
-              <button class="button button-secondary export-button" type="button" data-format="csv">Tải CSV</button>
-              <button class="button button-secondary export-button" type="button" data-format="xlsx">Tải Excel</button>
+              <button class="button button-secondary export-button" type="button" data-format="csv">Tải tệp CSV</button>
+              <button class="button button-secondary export-button" type="button" data-format="xlsx">Tải tệp Excel</button>
             </form>
             <div id="report-output" class="table-wrap panel"><p class="empty">Chọn khoảng thời gian để xem báo cáo.</p></div>
           </section>

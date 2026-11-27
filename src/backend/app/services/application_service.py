@@ -1,4 +1,3 @@
-from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import get_pool
@@ -76,10 +75,6 @@ class ApplicationService:
                 await self._repository.reject(
                     connection, application_id, actor_id, review_note
                 )
-
-    async def get_by_id(self, application_id: UUID) -> dict[str, Any] | None:
-        async with get_pool().acquire() as connection:
-            return await self._repository.get_by_id(connection, application_id)
 
     @staticmethod
     def _validate_submit(command: SubmitApplicationCommand) -> None:

@@ -12,9 +12,6 @@ else
   echo "Application tables already exist; skipping table creation"
 fi
 
-echo "Loading required reference data"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f /reference-data/001_roles.sql
-
 for procedure_file in /procedures/*.sql; do
   echo "Applying $(basename "$procedure_file")"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f "$procedure_file"

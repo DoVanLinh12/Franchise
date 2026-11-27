@@ -27,8 +27,7 @@ POST /applications/{id}/start-review  ADMIN
 POST /applications/{id}/approve       ADMIN
 POST /applications/{id}/reject        ADMIN
 
-POST /stores                           ADMIN
-GET  /stores
+GET  /stores                           (cửa hàng được tạo tự động khi lập hợp đồng)
 
 POST /contracts                        ADMIN
 GET  /contracts
@@ -37,6 +36,8 @@ POST /contracts/{id}/activate          ADMIN
 GET  /contracts/{id}/pdf
 ```
 
+`POST /contracts` nhận `application_id` của hồ sơ đã duyệt và các điều khoản phí; hệ thống tự
+tạo cửa hàng INACTIVE (mã tự sinh, tên/địa chỉ lấy từ hồ sơ). Kích hoạt hợp đồng mở cửa hàng.
 Contract chỉ activate khi đã ký và tổng `INITIAL_FEE_PAYMENT` đạt ít nhất 20%
 Initial Franchise Fee. Store được activate trong cùng transaction.
 

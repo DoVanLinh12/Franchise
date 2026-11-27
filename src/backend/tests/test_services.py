@@ -6,14 +6,12 @@ import pytest
 
 from app.domain import (
     CreateDraftContractCommand,
-    CreateStoreCommand,
     SubmitApplicationCommand,
 )
 from app.exceptions import ValidationError
-from app.services import application_service, contract_service, store_service
+from app.services import application_service, contract_service
 from app.services.application_service import ApplicationService
 from app.services.contract_service import ContractService
-from app.services.store_service import StoreService
 
 
 class AsyncContext:
@@ -59,21 +57,6 @@ class ApplicationRepositorySpy:
     async def reject(self, connection, *args):
         self.calls.append(("reject", connection, args))
 
-    async def get_by_id(self, connection, application_id):
-        self.calls.append(("get_by_id", connection, (application_id,)))
-        return {"id": application_id, "status": "PENDING"}
-
-
-class StoreRepositorySpy:
-    def __init__(self):
-        self.calls = []
-
-    async def create_from_application(self, connection, **kwargs):
-        self.calls.append(("create", connection, kwargs))
-
-    async def get_by_id(self, connection, store_id):
-        self.calls.append(("get_by_id", connection, (store_id,)))
-        return {"id": store_id, "status": "INACTIVE"}
 
 
 class ContractRepositorySpy:
@@ -117,16 +100,13 @@ async def test_application_service_workflow_calls_repository(monkeypatch):
     await service.start_review(application_id, actor_id)
     await service.approve(application_id, actor_id, "Approved")
     await service.reject(application_id, actor_id, "Missing documents")
-    result = await service.get_by_id(application_id)
 
-    assert result == {"id": application_id, "status": "PENDING"}
     assert [call[0] for call in repository.calls] == [
         "submit",
         "withdraw",
         "start_review",
         "approve",
         "reject",
-        "get_by_id",
     ]
 
 
@@ -154,48 +134,10 @@ async def test_application_rejection_requires_reason():
         await service.reject(uuid4(), uuid4(), "  ")
 
 
-@pytest.mark.asyncio
-async def test_store_service_create_and_get(monkeypatch):
-    pool = FakePool()
-    repository = StoreRepositorySpy()
-    service = StoreService(repository)
-    monkeypatch.setattr(store_service, "get_pool", lambda: pool)
-    command = CreateStoreCommand(
-        application_id=uuid4(),
-        actor_id=uuid4(),
-        owner_id=uuid4(),
-        code="STORE-001",
-        name="Store One",
-        address="Address One",
-    )
-
-    store_id = await service.create_from_application(command)
-    result = await service.get_by_id(store_id)
-
-    assert result == {"id": store_id, "status": "INACTIVE"}
-    assert [call[0] for call in repository.calls] == ["create", "get_by_id"]
-
-
-@pytest.mark.asyncio
-async def test_store_service_rejects_empty_code():
-    service = StoreService(StoreRepositorySpy())
-    command = CreateStoreCommand(
-        application_id=uuid4(),
-        actor_id=uuid4(),
-        owner_id=uuid4(),
-        code=" ",
-        name="Store One",
-        address="Address One",
-    )
-
-    with pytest.raises(ValidationError, match="Required fields are empty"):
-        await service.create_from_application(command)
-
-
 def contract_command(**overrides):
     values = {
         "actor_id": uuid4(),
-        "store_id": uuid4(),
+        "application_id": uuid4(),
         "contract_no": "CONTRACT-001",
         "signed_date": date(2026, 9, 25),
         "effective_from": date(2026, 10, 1),
